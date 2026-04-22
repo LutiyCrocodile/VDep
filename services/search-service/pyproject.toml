@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "search-service"
+version = "0.1.0"
+description = "Search and subtitles service for video hosting microservices"
+authors = ["Your Name <your.email@example.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.104.1"
+uvicorn = {extras = ["standard"], version = "^0.24.0"}
+elasticsearch = {extras = ["async"], version = "^8.11.0"}
+sqlalchemy = {extras = ["asyncio"], version = "^2.0.23"}
+asyncpg = "^0.29.0"
+pydantic = "^2.5.0"
+httpx = "^0.25.2"
+celery = {extras = ["redis"], version = "^5.3.4"}
+redis = "^5.0.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.3"
+pytest-asyncio = "^0.21.1"
+black = "^23.11.0"
+flake8 = "^6.1.0"
+mypy = "^1.7.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
