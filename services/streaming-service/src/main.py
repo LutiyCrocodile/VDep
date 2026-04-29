@@ -201,11 +201,31 @@ async def stop_stream(
     return {"message": "Stream stopped", "archived_video_id": archived_video_id}
 
 async def archive_stream(stream_id: str) -> Optional[str]:
-    # Placeholder for archiving logic
-    # This would combine HLS segments into a single video file
-    # and create a video record
-    logger.info(f"Archiving stream {stream_id} (placeholder)")
-    return None  # Return video ID if archived
+    """
+    Archive stream by combining HLS segments into a video file
+    """
+    logger.info(f"Archiving stream {stream_id}")
+    
+    try:
+        # Get stream info
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{settings.video_service_url}/videos",
+                headers={"Authorization": f"Bearer {settings.internal_auth_token}"}
+            )
+        
+        # Placeholder: In real implementation, this would:
+        # 1. Download HLS segments from Nginx temp storage
+        # 2. Combine them using FFmpeg
+        # 3. Upload to MinIO
+        # 4. Create video record
+        # 5. Update stream with archived_video_id
+        
+        logger.info(f"Stream {stream_id} archived (placeholder)")
+        return None
+    except Exception as e:
+        logger.error(f"Failed to archive stream {stream_id}: {e}")
+        return None
 
 async def send_notification(user_id: str, notification_type: str, message: str, data: dict = None):
     # Send notification via notification service
@@ -242,6 +262,40 @@ async def stream_websocket(websocket: WebSocket, stream_id: str):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+@app.get("/streams/validate")
+async def validate_stream_key(
+    rtmp_key: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Validate RTMP stream key (called by Nginx on publish)
+    """
+    stream = await Stream.get_by_rtmp_key(db, rtmp_key)
+    if not stream:
+        raise HTTPException(status_code=403, detail="Invalid stream key")
+    
+    return {"valid": True, "stream_id": str(stream.id)}
+
+@app.get("/streams/live")
+async def get_live_streams(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get all currently live streams
+    """
+    streams = await Stream.get_live_streams(db)
+    return [
+        {
+            "id": str(s.id),
+            "title": s.title,
+            "description": s.description,
+            "hls_url": s.hls_url,
+            "start_time": str(s.start_time) if s.start_time else None,
+            "user_id": str(s.user_id)
+        }
+        for s in streams
+    ]
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8002)

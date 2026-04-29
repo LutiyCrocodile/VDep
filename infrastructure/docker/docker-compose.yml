@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   # Database
@@ -38,7 +37,7 @@ services:
 
   # Message queue
   rabbitmq:
-    image: rabbitmq:3.11-management-alpine
+    image: rabbitmq:4.1.8-alpine
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
@@ -95,6 +94,77 @@ services:
     networks:
       - video_network
 
+  # Notification service
+  notification-service:
+    build:
+      context: ../../services/notification-service
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://user:password@db:5432/video_hosting
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      SMTP_SERVER: ${SMTP_SERVER:-smtp.dgi.mos.ru}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-notifications@video.dgi.mos.ru}
+      AUTH_SERVICE_URL: http://auth-service:8000
+    ports:
+      - "8003:8003"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - video_network
+    restart: unless-stopped
+
+  # Search service
+  search-service:
+    build:
+      context: ../../services/search-service
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://user:password@db:5432/video_hosting
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      ELASTICSEARCH_INDEX: videos
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      AUTH_SERVICE_URL: http://auth-service:8000
+      VIDEO_SERVICE_URL: http://video-service:8001
+      INTERNAL_AUTH_TOKEN: internal-secret-token
+    ports:
+      - "8004:8004"
+    depends_on:
+      db:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      video-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - video_network
+    restart: unless-stopped
+
   # Authentication service
   auth-service:
     build:
@@ -103,6 +173,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://user:password@db:5432/video_hosting
       SECRET_KEY: your-secret-key-change-in-production
+      INTERNAL_AUTH_TOKEN: internal-secret-token
       LDAP_SERVER: ldap://your-ldap-server  # Configure for production
       LDAP_BASE_DN: DC=dgi,DC=mos,DC=ru
     ports:
@@ -188,6 +259,39 @@ services:
       - video_network
     restart: unless-stopped
 
+  # Streaming service
+  streaming-service:
+    build:
+      context: ../../services/streaming-service
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://user:password@db:5432/video_hosting
+      AUTH_SERVICE_URL: http://auth-service:8000
+      INTERNAL_AUTH_TOKEN: internal-secret-token
+      NOTIFICATION_SERVICE_URL: http://notification-service:8003
+      VIDEO_SERVICE_URL: http://video-service:8001
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8002:8002"
+      - "1935:1935"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - video_network
+    restart: unless-stopped
+
   # Reverse proxy and load balancer
   nginx:
     image: nginx:alpine
@@ -203,6 +307,12 @@ services:
       auth-service:
         condition: service_healthy
       video-service:
+        condition: service_healthy
+      streaming-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+      search-service:
         condition: service_healthy
       minio:
         condition: service_healthy

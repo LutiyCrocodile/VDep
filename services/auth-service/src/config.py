@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7
 
+    # Internal auth token for service-to-service communication
+    internal_auth_token: str = os.getenv("INTERNAL_AUTH_TOKEN", "internal-secret-token-change-in-production")
+
     # LDAP (for Active Directory integration)
     ldap_server: str = os.getenv("LDAP_SERVER", "")
     ldap_base_dn: str = os.getenv("LDAP_BASE_DN", "DC=dgi,DC=mos,DC=ru")

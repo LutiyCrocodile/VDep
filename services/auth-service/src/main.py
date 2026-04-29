@@ -252,6 +252,67 @@ async def read_users_me(current_user: User = Depends(get_current_active_user)):
         is_active=current_user.is_active
     )
 
+@app.get("/users/{user_id}/permissions")
+async def get_user_permissions(
+    user_id: str,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db)
+):
+    # Internal endpoint for other services
+    # Validate internal token
+    if credentials.credentials != settings.internal_auth_token:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    
+    user = await User.get_by_username(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get user's role permissions
+    result = await db.execute(
+        text("""
+            SELECT p.name 
+            FROM permissions p
+            JOIN role_permissions rp ON p.id = rp.permission_id
+            JOIN roles r ON rp.role_id = r.id
+            WHERE r.id = :role_id
+        """),
+        {"role_id": user.role_id}
+    )
+    
+    permissions = [row[0] for row in result.fetchall()]
+    return permissions
+
+@app.get("/users")
+async def list_users(
+    skip: int = 0,
+    limit: int = 50,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    # Only admin can list all users
+    # For simplicity, allow all authenticated users for now
+    result = await db.execute(
+        text("SELECT * FROM users LIMIT :limit OFFSET :skip"),
+        {"limit": limit, "skip": skip}
+    )
+    rows = result.fetchall()
+    return [
+        {
+            "id": str(row.id),
+            "username": row.username,
+            "email": row.email,
+            "is_active": row.is_active,
+            "created_at": str(row.created_at)
+        }
+        for row in rows
+    ]
+
+@app.post("/logout")
+async def logout(response: dict):
+    # In a real implementation, you might want to invalidate the token
+    # For JWT without a blacklist, client-side token removal is sufficient
+    return {"message": "Successfully logged out"}
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}

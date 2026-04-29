@@ -3,6 +3,8 @@ import subprocess
 import json
 import tempfile
 import shutil
+import uuid
+from datetime import datetime
 from minio import Minio
 from minio.error import S3Error
 from sqlalchemy import create_engine, text
@@ -10,7 +12,7 @@ from sqlalchemy.orm import sessionmaker
 from urllib.parse import urlparse
 import logging
 from .celery_app import celery_app
-from .database import Video
+from .database import Video, async_session
 from .config import settings
 
 # Configure logging
@@ -160,6 +162,10 @@ def transcode_video(self, video_id: str, minio_key: str):
         async with async_session() as db:
             await Video.update_status(db, video_id, "failed")
         raise
+
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+from .database import async_session
 
 def get_video_metadata(video_path: str) -> dict:
     """Extract video metadata using ffprobe"""

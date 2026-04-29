@@ -271,6 +271,100 @@ async def get_signed_url(
         logger.error(f"MinIO signed URL error: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate signed URL")
 
+@app.put("/videos/{video_id}")
+async def update_video(
+    video_id: str,
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+    is_private: Optional[bool] = None,
+    tags: Optional[str] = None,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    video = await Video.get_by_id(db, video_id)
+    if not video or str(video.user_id) != user_id:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    update_data = {}
+    if title is not None:
+        update_data['title'] = title
+    if description is not None:
+        update_data['description'] = description
+    if is_private is not None:
+        update_data['is_private'] = is_private
+    if tags is not None:
+        import json
+        update_data['tags'] = json.loads(tags) if tags else []
+
+    if update_data:
+        await Video.update_metadata(db, video_id, **update_data)
+
+    return {"message": "Video updated successfully"}
+
+@app.delete("/videos/{video_id}")
+async def delete_video(
+    video_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    video = await Video.get_by_id(db, video_id)
+    if not video or str(video.user_id) != user_id:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    # Delete from MinIO
+    try:
+        # Delete original video
+        minio_client.remove_object(settings.minio_bucket, video.minio_key)
+        
+        # Delete HLS files
+        try:
+            objects = minio_client.list_objects(settings.minio_bucket, prefix=f"{video_id}/hls/", recursive=True)
+            for obj in objects:
+                minio_client.remove_object(settings.minio_bucket, obj.object_name)
+        except S3Error:
+            pass  # HLS files might not exist
+
+        # Delete from database
+        await db.execute(
+            text("DELETE FROM videos WHERE id = :id"),
+            {"id": video_id}
+        )
+        await db.commit()
+
+        return {"message": "Video deleted successfully"}
+    except S3Error as e:
+        logger.error(f"MinIO delete error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete video")
+
+@app.post("/videos/{video_id}/views")
+async def record_view(
+    video_id: str,
+    watched_duration: Optional[int] = None,
+    user_id: Optional[str] = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    video = await Video.get_by_id(db, video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    # Record view
+    await db.execute(
+        text("""
+            INSERT INTO video_views (id, video_id, user_id, watched_duration, viewed_at)
+            VALUES (:id, :video_id, :user_id, :watched_duration, :viewed_at)
+        """),
+        {
+            "id": str(uuid.uuid4()),
+            "video_id": video_id,
+            "user_id": user_id,
+            "watched_duration": f"{watched_duration}s" if watched_duration else None,
+            "viewed_at": datetime.utcnow()
+        }
+    )
+    await db.commit()
+
+    return {"message": "View recorded"}
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
