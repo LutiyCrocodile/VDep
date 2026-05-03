@@ -245,6 +245,7 @@ class Video(Base):
     file_size = Column(BigInteger, nullable=False)
     minio_key = Column(String(255), unique=True, nullable=False)
     hls_playlist_url = Column(String(500))
+    thumbnail_url = Column(String(500))
     status = Column(String(20), default="uploaded")
     is_private = Column(Boolean, default=False)
     tags = Column(ARRAY(String))
@@ -289,36 +290,58 @@ class Video(Base):
 
     @classmethod
     async def get_by_id(cls, db: AsyncSession, video_id: str):
-        result = await db.execute(text("SELECT * FROM videos WHERE id = :id"), {"id": video_id})
+        # Convert to string and clean up
+        video_id_str = str(video_id).strip()
+        
+        # Try direct lookup - PostgreSQL will handle UUID conversion
+        result = await db.execute(
+            text("SELECT * FROM videos WHERE id::text = :id"),
+            {"id": video_id_str}
+        )
         row = result.first()
         if row:
             return cls(**row._asdict())
+        
+        # Try without hyphens if the ID has them
+        no_hyphens = video_id_str.replace('-', '')
+        if len(no_hyphens) == 32:
+            # Format as UUID with hyphens
+            formatted = f"{no_hyphens[:8]}-{no_hyphens[8:12]}-{no_hyphens[12:16]}-{no_hyphens[16:20]}-{no_hyphens[20:]}"
+            result = await db.execute(
+                text("SELECT * FROM videos WHERE id::text = :id"),
+                {"id": formatted}
+            )
+            row = result.first()
+            if row:
+                return cls(**row._asdict())
+        
         return None
 
     @classmethod
     async def get_all(cls, db: AsyncSession, skip: int = 0, limit: int = 10, user_id: str = None, channel_id: str = None):
+        # Only show ready videos that are processed and available for viewing
         if channel_id:
             query = """
                 SELECT * FROM videos
-                WHERE channel_id = :channel_id AND is_private = false
+                WHERE channel_id = :channel_id AND is_private = false AND status = 'ready'
                 ORDER BY created_at DESC
                 LIMIT :limit OFFSET :skip
             """
             result = await db.execute(text(query), {"channel_id": channel_id, "limit": limit, "skip": skip})
         elif user_id:
-            # For authenticated users, show their own videos + public videos
+            # For authenticated users, show their own videos (any status) + public ready videos
             query = """
                 SELECT * FROM videos
-                WHERE user_id = :user_id OR is_private = false
+                WHERE (user_id = :user_id) OR (is_private = false AND status = 'ready')
                 ORDER BY created_at DESC
                 LIMIT :limit OFFSET :skip
             """
             result = await db.execute(text(query), {"user_id": user_id, "limit": limit, "skip": skip})
         else:
-            # For anonymous users, show only public videos
+            # For anonymous users, show only public ready videos
             query = """
                 SELECT * FROM videos
-                WHERE is_private = false
+                WHERE is_private = false AND status = 'ready'
                 ORDER BY created_at DESC
                 LIMIT :limit OFFSET :skip
             """

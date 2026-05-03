@@ -12,7 +12,9 @@ interface VideoCardProps {
     duration?: number;
     views_count: number;
     created_at: string;
+    user_id?: string;
     owner_username?: string;
+    channel_id?: string;
     status?: string;
   };
 }
@@ -47,9 +49,24 @@ export default function VideoCard({ video }: VideoCardProps) {
     return `${Math.floor(diffDays / 365)} лет назад`;
   };
 
-  const thumbnailUrl = video.thumbnail_url && !imageError
-    ? video.thumbnail_url
-    : `https://via.placeholder.com/320x180/272727/FFFFFF?text=${encodeURIComponent(video.title.substring(0, 20))}`;
+  // Construct full thumbnail URL with fallback
+  const getThumbnailUrl = () => {
+    // If we have a thumbnail URL from API
+    if (video.thumbnail_url) {
+      // If it's already a full URL (presigned MinIO), use it
+      if (video.thumbnail_url.startsWith('http')) {
+        return video.thumbnail_url;
+      }
+      // Otherwise construct full URL
+      return `${process.env.NEXT_PUBLIC_VIDEO_API_URL || 'http://localhost:8001'}${video.thumbnail_url}`;
+    }
+    
+    // No thumbnail available - generate placeholder with video title
+    const encodedTitle = encodeURIComponent(video.title.substring(0, 15));
+    return `https://placehold.co/320x180/1a1a3e/FFFFFF/png?text=${encodedTitle}`;
+  };
+  
+  const thumbnailUrl = !imageError ? getThumbnailUrl() : `https://placehold.co/320x180/272727/FFFFFF/png?text=No+Image`;
 
   return (
     <Link href={`/watch?v=${video.id}`} className="group block">
@@ -65,7 +82,15 @@ export default function VideoCard({ video }: VideoCardProps) {
             {formatDuration(video.duration)}
           </div>
         )}
-        {video.status === 'processing' && (
+        {(video.status === 'uploaded' || video.status === 'uploading') && (
+          <div className="absolute inset-0 bg-[#0a0a1a]/80 flex items-center justify-center backdrop-blur-sm">
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-white text-sm font-medium">Ожидание обработки...</span>
+            </div>
+          </div>
+        )}
+        {video.status === 'transcoding' && (
           <div className="absolute inset-0 bg-[#0a0a1a]/80 flex items-center justify-center backdrop-blur-sm">
             <div className="flex items-center gap-2">
               <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />

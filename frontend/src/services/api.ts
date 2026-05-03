@@ -230,6 +230,37 @@ export const videosAPI = {
   getVideoUrl: (videoId: string) => {
     return `${VIDEO_API_URL}/videos/${videoId}/playlist.m3u8`;
   },
+  
+  getThumbnail: async (videoId: string) => {
+    const response = await videoApiClient.get(`/videos/${videoId}/thumbnail`);
+    return response.data.thumbnail_url;
+  },
+  
+  getPlaylist: async (videoId: string) => {
+    const response = await videoApiClient.get(`/videos/${videoId}/playlist`);
+    return response.data.playlist_url;
+  },
+  
+  // Likes
+  likeVideo: async (videoId: string) => {
+    const response = await videoApiClient.post(`/videos/${videoId}/like`);
+    return response.data;
+  },
+  
+  unlikeVideo: async (videoId: string) => {
+    const response = await videoApiClient.delete(`/videos/${videoId}/like`);
+    return response.data;
+  },
+  
+  getVideoLikes: async (videoId: string) => {
+    const response = await videoApiClient.get(`/videos/${videoId}/likes`);
+    return response.data;
+  },
+  
+  // Share - get shareable link
+  getShareLink: (videoId: string) => {
+    return `${typeof window !== 'undefined' ? window.location.origin : ''}/watch?v=${videoId}`;
+  },
 };
 
 // Streams API

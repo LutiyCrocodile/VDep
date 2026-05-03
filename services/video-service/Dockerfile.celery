@@ -1,0 +1,25 @@
+# Celery worker with FFmpeg for video processing
+FROM python:3.11-slim
+
+# Install system dependencies including FFmpeg
+RUN apt-get update && apt-get install -y \
+    gcc \
+    curl \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+RUN pip install poetry
+COPY pyproject.toml ./
+RUN poetry config virtualenvs.create false && poetry install --only=main --no-interaction --no-ansi --no-root
+
+# Copy application code
+WORKDIR /app
+COPY src/ ./src/
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash app && chown -R app:app /app
+USER app
+
+# Run Celery worker
+CMD ["celery", "-A", "src.celery_app", "worker", "--loglevel=info", "--queues=video_transcoding,video_processing", "--concurrency=2"]

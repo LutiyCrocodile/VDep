@@ -20,7 +20,7 @@ interface Video {
   category?: string;
 }
 
-const CATEGORIES = ['Все', 'Совещания', 'Обучение', 'Проекты', 'Новости', 'Прямые трансляции', 'Мои видео'];
+const CATEGORIES = ['Все', 'Совещания', 'Обучение', 'Проекты', 'Новости', 'Прямые трансляции'];
 
 export default function Home() {
   const [videos, setVideos] = useState<Video[]>([]);
@@ -33,7 +33,8 @@ export default function Home() {
     const fetchVideos = async () => {
       try {
         const data = await videosAPI.getVideos(0, 24);
-        setVideos(data.videos || []);
+        // API returns direct array, not {videos: [...]}
+        setVideos(Array.isArray(data) ? data : (data.videos || []));
       } catch (err) {
         setError('Не удалось загрузить видео');
         // Mock data for demonstration with categories
@@ -105,9 +106,6 @@ export default function Home() {
   // Filter videos by category
   useEffect(() => {
     if (activeCategory === 'Все') {
-      setFilteredVideos(videos);
-    } else if (activeCategory === 'Мои видео') {
-      // In a real app, filter by current user
       setFilteredVideos(videos);
     } else {
       setFilteredVideos(videos.filter(v => v.category === activeCategory));

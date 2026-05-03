@@ -5,8 +5,9 @@ import { useSearchParams } from 'next/navigation';
 import Header from '@/components/layout/Header';
 import Sidebar from '@/components/layout/Sidebar';
 import VideoCard from '@/components/video/VideoCard';
-import { videosAPI } from '@/services/api';
+import { videosAPI, channelsAPI } from '@/services/api';
 import Link from 'next/link';
+import Hls from 'hls.js';
 
 interface Video {
   id: string;
@@ -16,8 +17,12 @@ interface Video {
   duration?: number;
   views_count: number;
   created_at: string;
+  user_id?: string;
   owner_username?: string;
+  channel_id?: string;
+  channel_name?: string;
   status?: string;
+  hls_playlist_url?: string;
   hls_url?: string;
   qualities?: { quality: string; url: string }[];
 }
@@ -38,6 +43,141 @@ export default function WatchPage() {
   const [currentQuality, setCurrentQuality] = useState('auto');
   const [showQualityMenu, setShowQualityMenu] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [playlistUrl, setPlaylistUrl] = useState<string>('');
+  const [likesCount, setLikesCount] = useState(0);
+  const [userLiked, setUserLiked] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [showShareToast, setShowShareToast] = useState(false);
+  const hlsRef = useRef<Hls | null>(null);
+
+  // Fetch signed playlist URL
+  useEffect(() => {
+    const fetchPlaylist = async () => {
+      if (!videoId) return;
+      try {
+        const url = await videosAPI.getPlaylist(videoId);
+        setPlaylistUrl(url);
+      } catch (err) {
+        console.log('Playlist not ready yet');
+      }
+    };
+    fetchPlaylist();
+  }, [videoId, video?.status]);
+
+  // Initialize HLS player
+  useEffect(() => {
+    const videoElement = videoRef.current;
+    if (!videoElement || !playlistUrl) return;
+
+    console.log('HLS Playlist URL:', playlistUrl);
+
+    if (Hls.isSupported()) {
+      const hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: true,
+      });
+      hlsRef.current = hls;
+      
+      hls.loadSource(playlistUrl);
+      hls.attachMedia(videoElement);
+      
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        console.log('HLS manifest loaded');
+      });
+      
+      hls.on(Hls.Events.ERROR, (event, data) => {
+        console.error('HLS error:', data);
+      });
+    } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+      // Native HLS support (Safari)
+      videoElement.src = playlistUrl;
+    }
+
+    return () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+    };
+  }, [playlistUrl]);
+
+  // Handle play/pause
+  useEffect(() => {
+    const videoElement = videoRef.current;
+    if (!videoElement) return;
+    
+    if (isPlaying) {
+      videoElement.play().catch(() => {});
+    } else {
+      videoElement.pause();
+    }
+  }, [isPlaying]);
+
+  // Fullscreen toggle
+  const toggleFullscreen = () => {
+    const container = videoRef.current?.parentElement;
+    if (!container) return;
+    
+    if (!document.fullscreenElement) {
+      container.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+    } else {
+      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+    }
+  };
+
+  // Volume control
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newVolume = parseFloat(e.target.value);
+    setVolume(newVolume);
+    if (videoRef.current) {
+      videoRef.current.volume = newVolume;
+    }
+  };
+
+  // Like handlers
+  const handleLike = async () => {
+    if (!videoId) return;
+    try {
+      if (userLiked) {
+        await videosAPI.unlikeVideo(videoId);
+        setUserLiked(false);
+        setLikesCount(prev => prev - 1);
+      } else {
+        await videosAPI.likeVideo(videoId);
+        setUserLiked(true);
+        setLikesCount(prev => prev + 1);
+      }
+    } catch (err) {
+      console.error('Like error:', err);
+    }
+  };
+
+  // Subscribe handler
+  const handleSubscribe = async () => {
+    if (!video?.channel_id) return;
+    try {
+      if (isSubscribed) {
+        await channelsAPI.unsubscribe(video.channel_id);
+        setIsSubscribed(false);
+      } else {
+        await channelsAPI.subscribe(video.channel_id);
+        setIsSubscribed(true);
+      }
+    } catch (err) {
+      console.error('Subscribe error:', err);
+    }
+  };
+
+  // Share handler
+  const handleShare = () => {
+    if (!videoId) return;
+    const link = videosAPI.getShareLink(videoId);
+    navigator.clipboard.writeText(link).then(() => {
+      setShowShareToast(true);
+      setTimeout(() => setShowShareToast(false), 3000);
+    });
+  };
 
   useEffect(() => {
     const fetchVideo = async () => {
@@ -46,6 +186,17 @@ export default function WatchPage() {
       try {
         const data = await videosAPI.getVideo(videoId);
         setVideo(data);
+        
+        // Fetch likes
+        const likesData = await videosAPI.getVideoLikes(videoId);
+        setLikesCount(likesData.likes_count);
+        setUserLiked(likesData.user_liked);
+        
+        // Check subscription if channel exists
+        if (data.channel_id) {
+          const subData = await channelsAPI.isSubscribed(data.channel_id);
+          setIsSubscribed(subData.is_subscribed);
+        }
       } catch (err) {
         setError('Видео не найдено');
         // Mock data
@@ -161,9 +312,8 @@ export default function WatchPage() {
                 poster={video.thumbnail_url || `https://via.placeholder.com/1280x720/1a1a3e/FFFFFF?text=${encodeURIComponent(video.title)}`}
                 onClick={() => setIsPlaying(!isPlaying)}
                 onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-              >
-                <source src={video.hls_url || video.qualities?.[0]?.url || ''} type="application/x-mpegURL" />
-              </video>
+                playsInline
+              />
               
               {/* Play button overlay */}
               {!isPlaying && (
@@ -243,13 +393,22 @@ export default function WatchPage() {
                       <svg className="w-5 h-5 text-zinc-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
                       </svg>
-                      <div className="w-16 h-1 bg-[#27274a] rounded-full">
-                        <div className="h-full w-2/3 bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full" />
-                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.1"
+                        value={volume}
+                        onChange={handleVolumeChange}
+                        className="w-20 h-1 bg-[#27274a] rounded-full appearance-none cursor-pointer accent-indigo-500"
+                      />
                     </div>
                     
                     {/* Fullscreen */}
-                    <button className="hover:bg-white/10 rounded-full p-2 transition-colors">
+                    <button 
+                      onClick={toggleFullscreen}
+                      className="hover:bg-white/10 rounded-full p-2 transition-colors"
+                    >
                       <svg className="w-5 h-5 text-zinc-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
                       </svg>
@@ -272,19 +431,36 @@ export default function WatchPage() {
                     <p className="text-white font-semibold">{video.owner_username || 'Неизвестный'}</p>
                     <p className="text-zinc-400 text-sm">{formatViews(video.views_count)} просмотров • {formatDate(video.created_at)}</p>
                   </div>
-                  <button className="ml-4 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white px-6 py-2.5 rounded-full text-sm font-semibold transition-all duration-200 shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/40">
-                    Подписаться
+                  <button 
+                    onClick={handleSubscribe}
+                    className={`ml-4 px-6 py-2.5 rounded-full text-sm font-semibold transition-all duration-200 shadow-lg ${
+                      isSubscribed
+                        ? 'bg-zinc-700 text-white hover:bg-zinc-600'
+                        : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-indigo-500/20 hover:shadow-indigo-500/40'
+                    }`}
+                  >
+                    {isSubscribed ? 'Подписан' : 'Подписаться'}
                   </button>
                 </div>
                 
                 <div className="flex items-center gap-3">
-                  <button className="flex items-center gap-2 bg-[#1a1a3e] hover:bg-[#252550] text-white px-5 py-2.5 rounded-full transition-all duration-200 border border-[#27274a] hover:border-indigo-500/30">
-                    <svg className="w-5 h-5 text-indigo-400" fill="currentColor" viewBox="0 0 20 20">
+                  <button 
+                    onClick={handleLike}
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-full transition-all duration-200 border ${
+                      userLiked
+                        ? 'bg-gradient-to-r from-indigo-600 to-violet-600 border-transparent text-white'
+                        : 'bg-[#1a1a3e] hover:bg-[#252550] text-white border-[#27274a] hover:border-indigo-500/30'
+                    }`}
+                  >
+                    <svg className={`w-5 h-5 ${userLiked ? 'text-white' : 'text-indigo-400'}`} fill="currentColor" viewBox="0 0 20 20">
                       <path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" />
                     </svg>
-                    <span className="font-medium">Нравится</span>
+                    <span className="font-medium">{userLiked ? 'Нравится' : 'Нравится'} {likesCount > 0 && `(${formatViews(likesCount)})`}</span>
                   </button>
-                  <button className="flex items-center gap-2 bg-[#1a1a3e] hover:bg-[#252550] text-white px-5 py-2.5 rounded-full transition-all duration-200 border border-[#27274a] hover:border-indigo-500/30">
+                  <button 
+                    onClick={handleShare}
+                    className="flex items-center gap-2 bg-[#1a1a3e] hover:bg-[#252550] text-white px-5 py-2.5 rounded-full transition-all duration-200 border border-[#27274a] hover:border-indigo-500/30"
+                  >
                     <svg className="w-5 h-5 text-violet-400" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" />
                     </svg>
@@ -331,6 +507,18 @@ export default function WatchPage() {
           </div>
         </div>
       </main>
+      
+      {/* Share Toast */}
+      {showShareToast && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-[#1a1a3e] border border-[#27274a] text-white px-6 py-3 rounded-xl shadow-xl z-50 animate-fade-in">
+          <div className="flex items-center gap-2">
+            <svg className="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+            </svg>
+            <span>Ссылка скопирована!</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

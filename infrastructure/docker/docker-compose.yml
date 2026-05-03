@@ -233,7 +233,7 @@ services:
   celery-worker:
     build:
       context: ../../services/video-service
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.celery
     command: celery -A src.celery_app worker --loglevel=info --queues=video_transcoding,video_processing
     environment:
       DATABASE_URL: postgresql+asyncpg://user:password@db:5432/video_hosting

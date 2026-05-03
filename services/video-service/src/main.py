@@ -3,6 +3,7 @@ from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Bac
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 import uvicorn
 from pydantic import BaseModel
 from typing import Optional, List
@@ -35,7 +36,7 @@ minio_client = Minio(
 )
 
 # Security
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 class VideoUploadResponse(BaseModel):
     video_id: str
@@ -46,18 +47,20 @@ class VideoResponse(BaseModel):
     id: str
     title: str
     description: Optional[str]
-    duration: Optional[str]
+    duration: Optional[int]  # Changed to int (seconds)
     resolution: Optional[str]
     bitrate: Optional[int]
     file_size: int
     status: str
     hls_playlist_url: Optional[str]
+    thumbnail_url: Optional[str]
     is_private: bool
     tags: List[str]
     created_at: datetime
     user_id: str
     channel_id: Optional[str] = None
     views_count: int = 0
+    owner_username: Optional[str] = None  # Channel name for display
 
 class ChannelCreate(BaseModel):
     name: str
@@ -113,6 +116,8 @@ app.add_middleware(
 
 async def get_current_user_id(credentials: HTTPAuthorizationCredentials = Depends(security)):
     # Validate token with auth service
+    if not credentials:
+        return None
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(
@@ -123,9 +128,9 @@ async def get_current_user_id(credentials: HTTPAuthorizationCredentials = Depend
                 user_data = response.json()
                 return user_data["id"]
             else:
-                raise HTTPException(status_code=401, detail="Invalid token")
+                return None
         except httpx.RequestError:
-            raise HTTPException(status_code=503, detail="Auth service unavailable")
+            return None
 
 def generate_minio_key(video_id: str, filename: str) -> str:
     file_hash = hashlib.sha256(f"{video_id}{filename}".encode()).hexdigest()[:16]
@@ -264,10 +269,30 @@ async def complete_upload(
 def start_transcoding(video_id: str, minio_key: str):
     # Send task to Celery
     celery_app.send_task(
-        "video_service.tasks.transcode_video",
+        "src.tasks.transcode_video",
         args=[video_id, minio_key],
         queue="video_transcoding"
     )
+
+def parse_duration(duration_val) -> Optional[int]:
+    """Parse duration string like '45s' to integer seconds"""
+    if not duration_val:
+        return None
+    if isinstance(duration_val, int):
+        return duration_val
+    if isinstance(duration_val, str):
+        # Remove 's' suffix and convert to int
+        return int(duration_val.rstrip('s'))
+    return None
+
+def get_thumbnail_url(thumbnail_path: str) -> str:
+    """Convert thumbnail path to full URL"""
+    if not thumbnail_path:
+        return ""
+    if thumbnail_path.startswith('http'):
+        return thumbnail_path
+    # Return MinIO presigned URL pattern
+    return f"http://localhost:9000/videos{thumbnail_path}"
 
 @app.get("/videos", response_model=List[VideoResponse])
 async def list_videos(
@@ -282,18 +307,20 @@ async def list_videos(
             id=str(v.id),
             title=v.title,
             description=v.description,
-            duration=str(v.duration) if v.duration else None,
+            duration=parse_duration(v.duration),
             resolution=v.resolution,
             bitrate=v.bitrate,
             file_size=v.file_size,
             status=v.status,
             hls_playlist_url=v.hls_playlist_url,
+            thumbnail_url=get_thumbnail_url(v.thumbnail_url),
             is_private=v.is_private,
             tags=v.tags or [],
             created_at=v.created_at,
             user_id=str(v.user_id),
             channel_id=str(v.channel_id) if v.channel_id else None,
-            views_count=v.views_count or 0
+            views_count=v.views_count or 0,
+            owner_username=v.owner_username if hasattr(v, 'owner_username') else None
         ) for v in videos
     ]
 
@@ -313,20 +340,33 @@ async def get_video(
         if not await check_private_video_permission(user_id, video.user_id):
             raise HTTPException(status_code=403, detail="Access denied")
 
+    # Get channel name for single video
+    owner_name = None
+    if video.channel_id:
+        try:
+            from .database import Channel
+            channel = await Channel.get_by_id(db, str(video.channel_id))
+            if channel:
+                owner_name = channel.name
+        except:
+            pass
+    
     return VideoResponse(
         id=str(video.id),
         title=video.title,
         description=video.description,
-        duration=str(video.duration) if video.duration else None,
+        duration=parse_duration(video.duration),
         resolution=video.resolution,
         bitrate=video.bitrate,
         file_size=video.file_size,
         status=video.status,
         hls_playlist_url=video.hls_playlist_url,
+        thumbnail_url=get_thumbnail_url(video.thumbnail_url),
         is_private=video.is_private,
         tags=video.tags or [],
         created_at=video.created_at,
         user_id=str(video.user_id),
+        owner_username=owner_name,
         channel_id=str(video.channel_id) if video.channel_id else None,
         views_count=video.views_count or 0
     )
@@ -371,6 +411,70 @@ async def get_signed_url(
     except S3Error as e:
         logger.error(f"MinIO signed URL error: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate signed URL")
+
+@app.get("/videos/{video_id}/thumbnail")
+async def get_video_thumbnail(
+    video_id: str,
+    user_id: Optional[str] = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get thumbnail URL for video"""
+    video = await Video.get_by_id(db, video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    # Check permissions for private videos
+    if video.is_private and (not user_id or str(video.user_id) != user_id):
+        if not await check_private_video_permission(user_id, video.user_id):
+            raise HTTPException(status_code=403, detail="Access denied")
+
+    if not video.thumbnail_url:
+        raise HTTPException(status_code=404, detail="Thumbnail not available")
+
+    # Generate presigned URL for thumbnail
+    try:
+        thumbnail_key = f"{video_id}/thumbnail.jpg"
+        signed_url = minio_client.presigned_get_object(
+            settings.minio_bucket,
+            thumbnail_key,
+            expires=timedelta(seconds=settings.signed_url_expiry_seconds)
+        )
+        return {"thumbnail_url": signed_url}
+    except S3Error as e:
+        logger.error(f"MinIO thumbnail error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate thumbnail URL")
+
+@app.get("/videos/{video_id}/playlist")
+async def get_video_playlist(
+    video_id: str,
+    user_id: Optional[str] = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get signed HLS playlist URL for video"""
+    video = await Video.get_by_id(db, video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    # Check permissions for private videos
+    if video.is_private and (not user_id or str(video.user_id) != user_id):
+        if not await check_private_video_permission(user_id, video.user_id):
+            raise HTTPException(status_code=403, detail="Access denied")
+
+    if not video.hls_playlist_url:
+        raise HTTPException(status_code=404, detail="Video not ready for streaming")
+
+    # Generate presigned URL for master playlist
+    try:
+        master_key = f"{video_id}/hls/master.m3u8"
+        signed_url = minio_client.presigned_get_object(
+            settings.minio_bucket,
+            master_key,
+            expires=timedelta(seconds=settings.signed_url_expiry_seconds)
+        )
+        return {"playlist_url": signed_url, "status": video.status}
+    except S3Error as e:
+        logger.error(f"MinIO playlist error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate playlist URL")
 
 @app.put("/videos/{video_id}")
 async def update_video(
@@ -424,6 +528,12 @@ async def delete_video(
                 minio_client.remove_object(settings.minio_bucket, obj.object_name)
         except S3Error:
             pass  # HLS files might not exist
+        
+        # Delete thumbnail
+        try:
+            minio_client.remove_object(settings.minio_bucket, f"{video_id}/thumbnail.jpg")
+        except S3Error:
+            pass
 
         # Delete from database
         await db.execute(
@@ -436,6 +546,124 @@ async def delete_video(
     except S3Error as e:
         logger.error(f"MinIO delete error: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete video")
+
+@app.post("/videos/{video_id}/views")
+async def record_view(
+    video_id: str,
+    watched_duration: Optional[int] = None,
+    user_id: Optional[str] = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    video = await Video.get_by_id(db, video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    # Record view
+    await db.execute(
+        text("""
+            INSERT INTO video_views (id, video_id, user_id, watched_duration, viewed_at)
+            VALUES (gen_random_uuid(), :video_id, :user_id, :watched_duration, NOW())
+        """),
+        {
+            "video_id": video_id,
+            "user_id": user_id,
+            "watched_duration": f"{watched_duration}s" if watched_duration else None,
+        }
+    )
+    
+    # Increment views count
+    await db.execute(
+        text("""
+            UPDATE videos 
+            SET views_count = views_count + 1 
+            WHERE id = :video_id
+        """),
+        {"video_id": video_id}
+    )
+    await db.commit()
+
+    return {"message": "View recorded"}
+
+# Likes endpoints
+@app.post("/videos/{video_id}/like")
+async def like_video(
+    video_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """Like a video"""
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    video = await Video.get_by_id(db, video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    
+    # Check if already liked
+    result = await db.execute(
+        text("SELECT id FROM video_likes WHERE video_id = :video_id AND user_id = :user_id"),
+        {"video_id": video_id, "user_id": user_id}
+    )
+    if result.first():
+        return {"message": "Already liked", "likes_count": await get_likes_count(db, video_id)}
+    
+    # Add like
+    await db.execute(
+        text("INSERT INTO video_likes (id, video_id, user_id, created_at) VALUES (gen_random_uuid(), :video_id, :user_id, NOW())"),
+        {"video_id": video_id, "user_id": user_id}
+    )
+    await db.commit()
+    
+    return {"message": "Liked", "likes_count": await get_likes_count(db, video_id)}
+
+@app.delete("/videos/{video_id}/like")
+async def unlike_video(
+    video_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """Remove like from video"""
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    await db.execute(
+        text("DELETE FROM video_likes WHERE video_id = :video_id AND user_id = :user_id"),
+        {"video_id": video_id, "user_id": user_id}
+    )
+    await db.commit()
+    
+    return {"message": "Unliked", "likes_count": await get_likes_count(db, video_id)}
+
+@app.get("/videos/{video_id}/likes")
+async def get_video_likes(
+    video_id: str,
+    user_id: Optional[str] = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get likes count and check if user liked"""
+    video = await Video.get_by_id(db, video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    
+    likes_count = await get_likes_count(db, video_id)
+    
+    user_liked = False
+    if user_id:
+        result = await db.execute(
+            text("SELECT id FROM video_likes WHERE video_id = :video_id AND user_id = :user_id"),
+            {"video_id": video_id, "user_id": user_id}
+        )
+        user_liked = result.first() is not None
+    
+    return {"likes_count": likes_count, "user_liked": user_liked}
+
+async def get_likes_count(db: AsyncSession, video_id: str) -> int:
+    """Get total likes count for video"""
+    result = await db.execute(
+        text("SELECT COUNT(*) FROM video_likes WHERE video_id = :video_id"),
+        {"video_id": video_id}
+    )
+    return result.scalar() or 0
 
 @app.post("/videos/{video_id}/views")
 async def record_view(
@@ -594,12 +822,13 @@ async def get_channel_videos(
             id=str(v.id),
             title=v.title,
             description=v.description,
-            duration=str(v.duration) if v.duration else None,
+            duration=parse_duration(v.duration),
             resolution=v.resolution,
             bitrate=v.bitrate,
             file_size=v.file_size,
             status=v.status,
             hls_playlist_url=v.hls_playlist_url,
+            thumbnail_url=v.thumbnail_url,
             is_private=v.is_private,
             tags=v.tags or [],
             created_at=v.created_at,

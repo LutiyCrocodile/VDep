@@ -68,6 +68,7 @@ CREATE TABLE videos (
     file_size BIGINT, -- in bytes
     minio_key VARCHAR(255) UNIQUE NOT NULL,
     hls_playlist_url VARCHAR(500),
+    thumbnail_url VARCHAR(500),
     status VARCHAR(20) DEFAULT 'uploaded' CHECK (status IN ('uploaded', 'transcoding', 'ready', 'failed')),
     is_private BOOLEAN DEFAULT FALSE,
     tags TEXT[], -- array of tags
@@ -100,6 +101,15 @@ CREATE TABLE video_views (
     user_agent TEXT,
     watched_duration INTERVAL,
     viewed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Video likes
+CREATE TABLE video_likes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    video_id UUID NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(video_id, user_id)
 );
 
 -- Subtitles

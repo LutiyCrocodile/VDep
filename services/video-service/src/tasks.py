@@ -7,21 +7,65 @@ import uuid
 from datetime import datetime
 from minio import Minio
 from minio.error import S3Error
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
 from urllib.parse import urlparse
 import logging
+import pg8000
 from .celery_app import celery_app
-from .database import Video, async_session
 from .config import settings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Database setup for Celery tasks (synchronous)
-engine = create_engine(settings.database_url.replace('+asyncpg', ''), echo=False, future=True)
-sync_session = sessionmaker(engine, expire_on_commit=False)
+# Sync database connection for Celery tasks
+def get_db_connection():
+    """Create sync database connection using pg8000"""
+    parsed = urlparse(settings.database_url.replace('+asyncpg', ''))
+    conn = pg8000.connect(
+        user=parsed.username or 'user',
+        password=parsed.password or 'password',
+        host=parsed.hostname or 'db',
+        port=parsed.port or 5432,
+        database=parsed.path.lstrip('/') or 'video_hosting'
+    )
+    return conn
+
+def update_video_metadata(video_id, duration, resolution, bitrate, thumbnail_url):
+    """Update video metadata in database"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+                UPDATE videos
+                SET duration = %s, resolution = %s, bitrate = %s, 
+                    thumbnail_url = %s, updated_at = NOW()
+                WHERE id = %s
+            """,
+            (duration, resolution, bitrate, thumbnail_url, video_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+def update_video_status(video_id, status, hls_url=None):
+    """Update video status in database"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        if hls_url:
+            cursor.execute(
+                "UPDATE videos SET status = %s, hls_playlist_url = %s WHERE id = %s",
+                (status, hls_url, video_id)
+            )
+        else:
+            cursor.execute(
+                "UPDATE videos SET status = %s WHERE id = %s",
+                (status, video_id)
+            )
+        conn.commit()
+    finally:
+        conn.close()
 
 # MinIO client
 minio_client = Minio(
@@ -49,22 +93,21 @@ def transcode_video(self, video_id: str, minio_key: str):
             metadata = get_video_metadata(local_video_path)
             logger.info(f"Video metadata: {metadata}")
 
+            # Generate thumbnail
+            thumbnail_path = os.path.join(temp_dir, "thumbnail.jpg")
+            thumbnail_minio_key = f"{video_id}/thumbnail.jpg"
+            generate_thumbnail(local_video_path, thumbnail_path)
+            minio_client.fput_object(settings.minio_bucket, thumbnail_minio_key, thumbnail_path)
+            logger.info(f"Thumbnail uploaded to {thumbnail_minio_key}")
+
             # Update database with metadata
-            with sync_session() as db:
-                db.execute(
-                    text("""
-                        UPDATE videos
-                        SET duration = :duration, resolution = :resolution, bitrate = :bitrate, updated_at = NOW()
-                        WHERE id = :video_id
-                    """),
-                    {
-                        "video_id": video_id,
-                        "duration": metadata.get('duration'),
-                        "resolution": metadata.get('resolution'),
-                        "bitrate": metadata.get('bitrate')
-                    }
-                )
-                db.commit()
+            update_video_metadata(
+                video_id,
+                metadata.get('duration'),
+                metadata.get('resolution'),
+                metadata.get('bitrate'),
+                f"/{video_id}/thumbnail.jpg"
+            )
 
             # Create HLS directory
             hls_dir = os.path.join(temp_dir, "hls")
@@ -87,7 +130,7 @@ def transcode_video(self, video_id: str, minio_key: str):
                 cmd = [
                     "ffmpeg",
                     "-i", local_video_path,
-                    "-vf", f"scale={get_scale_filter(quality)},drawtext=text='DGI':fontsize=24:fontcolor=white:box=1:boxcolor=black@0.5:x=(w-text_w)/2:y=h-text_h-10",
+                    "-vf", f"{get_scale_filter(quality)},drawtext=text='DGI':fontsize=24:fontcolor=white:box=1:boxcolor=black@0.5:x=(w-text_w)/2:y=h-text_h-10",
                     "-c:v", "libx264",
                     "-c:a", "aac",
                     "-b:a", "128k",
@@ -132,26 +175,13 @@ def transcode_video(self, video_id: str, minio_key: str):
             hls_url = f"/vod/{video_id}/master.m3u8"
 
             # Update database
-            with sync_session() as db:
-                db.execute(
-                    text("""
-                        UPDATE videos
-                        SET hls_playlist_url = :hls_url, status = :status, updated_at = NOW()
-                        WHERE id = :video_id
-                    """),
-                    {
-                        "video_id": video_id,
-                        "hls_url": hls_url,
-                        "status": "ready"
-                    }
-                )
-                db.commit()
+            update_video_status(video_id, 'ready', hls_url)
 
             logger.info(f"Transcoding completed for video {video_id}")
 
             # Trigger subtitle generation
             self.app.send_task(
-                "video_service.tasks.generate_subtitles",
+                "src.tasks.generate_subtitles",
                 args=[video_id, minio_key],
                 queue="video_processing"
             )
@@ -159,13 +189,9 @@ def transcode_video(self, video_id: str, minio_key: str):
     except Exception as e:
         logger.error(f"Transcoding failed for video {video_id}: {str(e)}")
         # Update status to failed
-        async with async_session() as db:
-            await Video.update_status(db, video_id, "failed")
+        update_video_status(video_id, 'failed')
         raise
 
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
-from .database import async_session
 
 def get_video_metadata(video_path: str) -> dict:
     """Extract video metadata using ffprobe"""
@@ -205,10 +231,35 @@ def get_video_metadata(video_path: str) -> dict:
         bitrate = video_stream.get("bit_rate")
 
     return {
-        "duration": f"{duration}s" if duration else None,
+        "duration": int(float(duration)) if duration else None,
         "resolution": resolution,
         "bitrate": int(bitrate) if bitrate else None
     }
+
+def generate_thumbnail(video_path: str, output_path: str, time: str = "00:00:01"):
+    """Generate thumbnail from video at specified time"""
+    cmd = [
+        "ffmpeg",
+        "-i", video_path,
+        "-ss", time,  # Seek to time
+        "-vframes", "1",  # Extract one frame
+        "-vf", "scale=320:180:force_original_aspect_ratio=decrease,pad=320:180:(ow-iw)/2:(oh-ih)/2",
+        "-y",
+        output_path
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        logger.error(f"Thumbnail generation error: {result.stderr}")
+        # Create a placeholder if generation fails
+        subprocess.run([
+            "ffmpeg",
+            "-f", "lavfi",
+            "-i", "color=c=black:s=320x180",
+            "-frames:v", "1",
+            "-y",
+            output_path
+        ], capture_output=True)
+    return output_path
 
 def get_scale_filter(quality: str) -> str:
     """Get FFmpeg scale filter for quality"""
@@ -289,22 +340,19 @@ def generate_subtitles(video_id: str, minio_key: str):
         logger.info(f"Subtitle generation completed for video {video_id} (placeholder)")
 
         # Update search index with subtitles (placeholder)
-        with sync_session() as db:
-            # Placeholder: In real implementation, this would insert subtitle content
-            db.execute(
-                text("""
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
                     INSERT INTO subtitles (id, video_id, language, content, created_at)
-                    VALUES (:id, :video_id, :language, :content, :created_at)
-                """),
-                {
-                    "id": str(uuid.uuid4()),
-                    "video_id": video_id,
-                    "language": "ru",
-                    "content": "WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nПлейсхолдер субтитров\n",
-                    "created_at": datetime.utcnow()
-                }
+                    VALUES (%s, %s, %s, %s, NOW())
+                """,
+                (str(uuid.uuid4()), video_id, "ru", "WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nПлейсхолдер субтитров\n")
             )
-            db.commit()
+            conn.commit()
+        finally:
+            conn.close()
 
     except Exception as e:
         logger.error(f"Subtitle generation failed for video {video_id}: {str(e)}")

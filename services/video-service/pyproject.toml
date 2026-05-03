@@ -15,6 +15,7 @@ pydantic-settings = "^2.1.0"
 minio = "^7.2.0"
 celery = {extras = ["redis"], version = "^5.3.4"}
 redis = "^5.0.1"
+pg8000 = "^1.30.0"  # Pure Python PostgreSQL driver for Celery
 python-multipart = "^0.0.17"
 httpx = "^0.25.2"  # For API calls to auth service
 opencv-python = "^4.8.1.78"  # For watermarking

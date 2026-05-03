@@ -16,7 +16,7 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     task_routes={
-        "video_service.tasks.transcode_video": {"queue": "video_transcoding"},
-        "video_service.tasks.generate_subtitles": {"queue": "video_processing"},
+        "src.tasks.transcode_video": {"queue": "video_transcoding"},
+        "src.tasks.generate_subtitles": {"queue": "video_processing"},
     },
 )
