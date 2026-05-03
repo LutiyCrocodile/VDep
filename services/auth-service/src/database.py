@@ -26,6 +26,23 @@ class Role(Base):
             return cls(**row._asdict())
         return None
 
+    @classmethod
+    async def create(cls, db: AsyncSession, **kwargs):
+        role_id = uuid.uuid4()
+        await db.execute(
+            text("""
+                INSERT INTO roles (id, name, description)
+                VALUES (:id, :name, :description)
+            """),
+            {
+                "id": role_id,
+                "name": kwargs['name'],
+                "description": kwargs.get('description', '')
+            }
+        )
+        await db.commit()
+        return str(role_id)
+
 class Permission(Base):
     __tablename__ = "permissions"
 
@@ -43,7 +60,7 @@ class User(Base):
     password_hash = Column(String(255))
     ldap_dn = Column(String(255))
     esia_id = Column(String(255))
-    role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id"), nullable=False)
+    role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id"), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow)

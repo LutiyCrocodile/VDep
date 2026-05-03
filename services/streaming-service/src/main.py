@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 import uvicorn
@@ -14,8 +15,7 @@ import httpx
 import subprocess
 import json
 
-from .database import get_db, create_tables
-from .models import Stream
+from .database import get_db, create_tables, Stream
 from .config import settings
 
 # Configure logging
@@ -51,6 +51,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Streaming Service", version="1.0.0", lifespan=lifespan)
 
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 async def get_current_user_id(credentials: HTTPAuthorizationCredentials = Depends(security)):
     # Validate token with auth service
     async with httpx.AsyncClient() as client:
@@ -73,8 +82,23 @@ async def create_stream(
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
+    # Check if user has a channel
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(
+                f"{settings.video_service_url}/channels/my",
+                headers={"Authorization": f"Bearer {settings.internal_auth_token}"}
+            )
+            if response.status_code != 200:
+                raise HTTPException(status_code=403, detail="You must create a channel before starting streams")
+        except httpx.RequestError:
+            raise HTTPException(status_code=503, detail="Video service unavailable")
+
     # Generate RTMP key
     rtmp_key = str(uuid.uuid4()).replace('-', '')[:16]
+
+    # Generate HLS URL
+    hls_url = f"/hls/{rtmp_key}/index.m3u8"
 
     # Create stream record
     stream = await Stream.create(db, **{
@@ -82,6 +106,7 @@ async def create_stream(
         "description": stream_data.description,
         "user_id": user_id,
         "rtmp_key": rtmp_key,
+        "hls_url": hls_url,
         "is_private": stream_data.is_private
     })
 

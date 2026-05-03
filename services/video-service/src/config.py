@@ -1,5 +1,6 @@
 import os
-from pydantic import BaseSettings
+from typing import List
+from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # Database
@@ -11,6 +12,7 @@ class Settings(BaseSettings):
     minio_secret_key: str = os.getenv("MINIO_SECRET_KEY", "minioadmin")
     minio_bucket: str = os.getenv("MINIO_BUCKET", "videos")
     minio_secure: bool = os.getenv("MINIO_SECURE", "false").lower() == "true"
+    minio_external_endpoint: str = os.getenv("MINIO_EXTERNAL_ENDPOINT", "localhost:9000")  # For frontend access
 
     # Auth service
     auth_service_url: str = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8000")
@@ -22,7 +24,7 @@ class Settings(BaseSettings):
     max_file_size: int = int(os.getenv("MAX_FILE_SIZE", "10737418240"))  # 10GB
 
     # Transcoding settings
-    transcoding_qualities = ["180p", "360p", "480p", "720p", "1080p"]
+    transcoding_qualities: List[str] = ["180p", "360p", "480p", "720p", "1080p"]
     hls_segment_duration: int = 10  # seconds
 
     # Redis/Celery

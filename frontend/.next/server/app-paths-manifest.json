@@ -1,0 +1,10 @@
+{
+  "/page": "app/page.js",
+  "/create-channel/page": "app/create-channel/page.js",
+  "/channel/[handle]/page": "app/channel/[handle]/page.js",
+  "/upload/page": "app/upload/page.js",
+  "/watch/page": "app/watch/page.js",
+  "/my-videos/page": "app/my-videos/page.js",
+  "/subscriptions/page": "app/subscriptions/page.js",
+  "/go-live/page": "app/go-live/page.js"
+}

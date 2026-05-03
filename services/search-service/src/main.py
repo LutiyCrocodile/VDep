@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 import uvicorn
@@ -9,8 +10,7 @@ import httpx
 import logging
 from elasticsearch import AsyncElasticsearch
 
-from .database import get_db, create_tables
-from .models import Subtitle
+from .database import get_db, create_tables, Subtitle
 from .config import settings
 
 logging.basicConfig(level=logging.INFO)
@@ -53,6 +53,15 @@ async def lifespan(app: FastAPI):
     logger.info("Search service shutting down")
 
 app = FastAPI(title="Search Service", version="1.0.0", lifespan=lifespan)
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 async def get_current_user_id(credentials: HTTPAuthorizationCredentials = Depends(security)):
     async with httpx.AsyncClient() as client:

@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 import uvicorn
 from pydantic import BaseModel, EmailStr
@@ -9,11 +10,10 @@ import ldap
 import os
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
 import logging
 
-from .database import get_db, create_tables
-from .models import User, Role, Permission
+from .database import get_db, create_tables, User, Role, Permission
 from .config import settings
 
 # Configure logging
@@ -21,10 +21,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # OAuth2 scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+security = HTTPBearer()
 
 # JWT settings
 SECRET_KEY = settings.secret_key
@@ -50,7 +50,8 @@ class UserCreate(BaseModel):
     username: str
     email: EmailStr
     password: str
-    role_id: str
+    role_id: Optional[str] = None
+    full_name: Optional[str] = None
 
 class UserResponse(BaseModel):
     id: str
@@ -70,11 +71,24 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Auth Service", version="1.0.0", lifespan=lifespan)
 
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    password_bytes = plain_password.encode('utf-8')[:72]
+    return bcrypt.checkpw(password_bytes, hashed_password.encode('utf-8'))
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    password_bytes = password.encode('utf-8')[:72]
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password_bytes, salt)
+    return hashed.decode('utf-8')
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -182,12 +196,22 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     # Hash password
     hashed_password = get_password_hash(user_data.password)
 
+    # Get or create default role
+    role_id = user_data.role_id
+    if not role_id:
+        default_role = await Role.get_by_name(db, "user")
+        if not default_role:
+            # Create default role if not exists
+            role_id = await Role.create(db, name="user", description="Default user role")
+        else:
+            role_id = str(default_role.id)
+
     # Create user
     user = await User.create(db, **{
         "username": user_data.username,
         "email": user_data.email,
         "password_hash": hashed_password,
-        "role_id": user_data.role_id
+        "role_id": role_id
     })
 
     return UserResponse(
@@ -316,6 +340,11 @@ async def logout(response: dict):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+@app.get("/metrics")
+async def metrics():
+    # Basic metrics endpoint for Prometheus
+    return {"status": "ok", "service": "auth-service"}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

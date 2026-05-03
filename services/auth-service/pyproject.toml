@@ -6,14 +6,15 @@ authors = ["Your Name <your.email@example.com>"]
 
 [tool.poetry.dependencies]
 python = "^3.11"
-fastapi = "^0.104.1"
-uvicorn = {extras = ["standard"], version = "^0.24.0"}
+fastapi = "^0.115.0"
+uvicorn = {extras = ["standard"], version = "^0.32.0"}
 sqlalchemy = {extras = ["asyncio"], version = "^2.0.23"}
 asyncpg = "^0.29.0"
 pydantic = {extras = ["email"], version = "^2.5.0"}
+pydantic-settings = "^2.1.0"
 python-jose = {extras = ["cryptography"], version = "^3.3.0"}
 passlib = {extras = ["bcrypt"], version = "^1.7.4"}
-python-multipart = "^0.0.6"
+python-multipart = "^0.0.17"
 python-ldap = "^3.4.3"  # for LDAP integration
 
 [tool.poetry.group.dev.dependencies]

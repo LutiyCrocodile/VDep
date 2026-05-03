@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 import uvicorn
@@ -14,8 +15,7 @@ from email.mime.multipart import MIMEMultipart
 import asyncio
 from datetime import datetime
 
-from .database import get_db, create_tables
-from .models import Notification
+from .database import get_db, create_tables, Notification
 from .config import settings
 
 logging.basicConfig(level=logging.INFO)
@@ -46,6 +46,15 @@ async def lifespan(app: FastAPI):
     logger.info("Notification service shutting down")
 
 app = FastAPI(title="Notification Service", version="1.0.0", lifespan=lifespan)
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 async def get_current_user_id(credentials: HTTPAuthorizationCredentials = Depends(security)):
     async with httpx.AsyncClient() as client:

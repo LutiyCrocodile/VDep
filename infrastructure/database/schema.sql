@@ -40,12 +40,28 @@ CREATE TABLE users (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Channels
+CREATE TABLE channels (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    handle VARCHAR(50) UNIQUE NOT NULL, -- @username style handle
+    avatar_url VARCHAR(500),
+    banner_url VARCHAR(500),
+    owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subscribers_count INTEGER DEFAULT 0,
+    is_verified BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Videos
 CREATE TABLE videos (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title VARCHAR(255) NOT NULL,
     description TEXT,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    channel_id UUID REFERENCES channels(id) ON DELETE SET NULL,
     duration INTERVAL,
     resolution VARCHAR(20), -- e.g., '1920x1080'
     bitrate INTEGER, -- in kbps
@@ -55,6 +71,7 @@ CREATE TABLE videos (
     status VARCHAR(20) DEFAULT 'uploaded' CHECK (status IN ('uploaded', 'transcoding', 'ready', 'failed')),
     is_private BOOLEAN DEFAULT FALSE,
     tags TEXT[], -- array of tags
+    views_count INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -105,11 +122,20 @@ CREATE TABLE search_index (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Subscriptions
+CREATE TABLE subscriptions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    subscriber_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    channel_id UUID NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(subscriber_id, channel_id)
+);
+
 -- Notifications
 CREATE TABLE notifications (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    type VARCHAR(50) NOT NULL, -- 'video_ready', 'stream_start', etc.
+    type VARCHAR(50) NOT NULL, -- 'video_ready', 'stream_start', 'new_video', etc.
     message TEXT NOT NULL,
     is_read BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -132,7 +158,10 @@ CREATE TABLE audit_logs (
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_users_role_id ON users(role_id);
+CREATE INDEX idx_channels_owner_id ON channels(owner_id);
+CREATE INDEX idx_channels_handle ON channels(handle);
 CREATE INDEX idx_videos_user_id ON videos(user_id);
+CREATE INDEX idx_videos_channel_id ON videos(channel_id);
 CREATE INDEX idx_videos_status ON videos(status);
 CREATE INDEX idx_videos_created_at ON videos(created_at DESC);
 CREATE INDEX idx_streams_user_id ON streams(user_id);
@@ -140,6 +169,8 @@ CREATE INDEX idx_streams_is_live ON streams(is_live);
 CREATE INDEX idx_video_views_video_id ON video_views(video_id);
 CREATE INDEX idx_video_views_user_id ON video_views(user_id);
 CREATE INDEX idx_subtitles_video_id ON subtitles(video_id);
+CREATE INDEX idx_subscriptions_subscriber_id ON subscriptions(subscriber_id);
+CREATE INDEX idx_subscriptions_channel_id ON subscriptions(channel_id);
 CREATE INDEX idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX idx_notifications_is_read ON notifications(is_read);
 CREATE INDEX idx_audit_logs_user_id ON audit_logs(user_id);
@@ -161,6 +192,7 @@ END;
 $$ language 'plpgsql';
 
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_channels_updated_at BEFORE UPDATE ON channels FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_videos_updated_at BEFORE UPDATE ON videos FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Trigger for search_index update

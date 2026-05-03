@@ -9,6 +9,13 @@ from .config import settings
 class Base(DeclarativeBase):
     pass
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True)
+    username = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False)
+
 class Stream(Base):
     __tablename__ = "streams"
 
@@ -21,7 +28,7 @@ class Stream(Base):
     is_live = Column(Boolean, default=False)
     start_time = Column(DateTime(timezone=True))
     end_time = Column(DateTime(timezone=True))
-    archived_video_id = Column(UUID(as_uuid=True), ForeignKey("videos.id"))
+    archived_video_id = Column(UUID(as_uuid=True))
     is_private = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 

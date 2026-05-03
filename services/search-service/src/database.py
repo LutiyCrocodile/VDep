@@ -9,11 +9,18 @@ from .config import settings
 class Base(DeclarativeBase):
     pass
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True)
+    username = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False)
+
 class Subtitle(Base):
     __tablename__ = "subtitles"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    video_id = Column(UUID(as_uuid=True), ForeignKey("videos.id"), nullable=False)
+    video_id = Column(UUID(as_uuid=True), nullable=False)
     language = Column(String(10), default="ru")
     content = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)

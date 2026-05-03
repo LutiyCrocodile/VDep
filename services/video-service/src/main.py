@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 import uvicorn
@@ -8,7 +9,8 @@ from typing import Optional, List
 import os
 import uuid
 import hashlib
-from datetime import datetime
+import io
+from datetime import datetime, timedelta
 import httpx
 import json
 from minio import Minio
@@ -16,8 +18,7 @@ from minio.error import S3Error
 import subprocess
 import logging
 
-from .database import get_db, create_tables
-from .models import Video
+from .database import get_db, create_tables, Video, Channel, Subscription
 from .config import settings
 from .celery_app import celery_app
 
@@ -55,6 +56,33 @@ class VideoResponse(BaseModel):
     tags: List[str]
     created_at: datetime
     user_id: str
+    channel_id: Optional[str] = None
+    views_count: int = 0
+
+class ChannelCreate(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    handle: str
+    avatar_url: Optional[str] = None
+    banner_url: Optional[str] = None
+
+class ChannelResponse(BaseModel):
+    id: str
+    name: str
+    description: Optional[str]
+    handle: str
+    avatar_url: Optional[str]
+    banner_url: Optional[str]
+    owner_id: str
+    subscribers_count: int
+    is_verified: bool
+    created_at: datetime
+
+class SubscriptionResponse(BaseModel):
+    id: str
+    subscriber_id: str
+    channel_id: str
+    created_at: datetime
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -73,6 +101,15 @@ async def lifespan(app: FastAPI):
     logger.info("Video service shutting down")
 
 app = FastAPI(title="Video Service", version="1.0.0", lifespan=lifespan)
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for development
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 async def get_current_user_id(credentials: HTTPAuthorizationCredentials = Depends(security)):
     # Validate token with auth service
@@ -105,13 +142,18 @@ async def init_upload(
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
+    # Check if user has a channel
+    channel = await Channel.get_by_owner(db, user_id)
+    if not channel:
+        raise HTTPException(status_code=403, detail="You must create a channel before uploading videos")
+
     # Parse tags
     try:
         tags_list = json.loads(tags) if tags else []
     except json.JSONDecodeError:
         tags_list = []
 
-    # Create video record
+    # Create video record with channel_id
     video_id = str(uuid.uuid4())
     minio_key = generate_minio_key(video_id, filename)
 
@@ -120,6 +162,7 @@ async def init_upload(
         "title": title,
         "description": description,
         "user_id": user_id,
+        "channel_id": str(channel.id),
         "file_size": file_size,
         "minio_key": minio_key,
         "status": "uploading",
@@ -132,7 +175,7 @@ async def init_upload(
         upload_url = minio_client.presigned_put_object(
             settings.minio_bucket,
             minio_key,
-            expires=settings.upload_expiry_seconds
+            expires=timedelta(seconds=settings.upload_expiry_seconds)
         )
     except S3Error as e:
         logger.error(f"MinIO presigned URL error: {e}")
@@ -143,6 +186,60 @@ async def init_upload(
         upload_url=upload_url,
         minio_key=minio_key
     )
+
+@app.post("/videos/{video_id}/upload-data")
+async def upload_video_data(
+    video_id: str,
+    file: UploadFile = File(...),
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """Direct file upload endpoint - avoids CORS issues with MinIO"""
+    # Verify video ownership
+    video = await Video.get_by_id(db, video_id)
+    if not video or str(video.user_id) != user_id:
+        raise HTTPException(status_code=404, detail="Video not found")
+    
+    if video.status != "uploading":
+        raise HTTPException(status_code=400, detail="Video already uploaded or processed")
+    
+    # Upload to MinIO
+    try:
+        file_size = 0
+        # Read file in chunks
+        chunk_size = 1024 * 1024  # 1MB chunks
+        chunks = []
+        while True:
+            chunk = await file.read(chunk_size)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            file_size += len(chunk)
+        
+        file_data = b''.join(chunks)
+        
+        minio_client.put_object(
+            settings.minio_bucket,
+            video.minio_key,
+            io.BytesIO(file_data),
+            file_size,
+            content_type=file.content_type or 'application/octet-stream'
+        )
+        
+        logger.info(f"File uploaded to MinIO for video {video_id}, size: {file_size}")
+        
+        return {
+            "message": "File uploaded successfully",
+            "video_id": video_id,
+            "file_size": file_size
+        }
+        
+    except S3Error as e:
+        logger.error(f"MinIO upload error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
+    except Exception as e:
+        logger.error(f"Unexpected upload error: {e}")
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 @app.post("/videos/{video_id}/complete")
 async def complete_upload(
@@ -176,10 +273,10 @@ def start_transcoding(video_id: str, minio_key: str):
 async def list_videos(
     skip: int = 0,
     limit: int = 10,
-    user_id: Optional[str] = Depends(get_current_user_id),
+    current_user_id: Optional[str] = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
-    videos = await Video.get_all(db, skip=skip, limit=limit, user_id=user_id)
+    videos = await Video.get_all(db, skip=skip, limit=limit, user_id=current_user_id)
     return [
         VideoResponse(
             id=str(v.id),
@@ -194,7 +291,9 @@ async def list_videos(
             is_private=v.is_private,
             tags=v.tags or [],
             created_at=v.created_at,
-            user_id=str(v.user_id)
+            user_id=str(v.user_id),
+            channel_id=str(v.channel_id) if v.channel_id else None,
+            views_count=v.views_count or 0
         ) for v in videos
     ]
 
@@ -227,7 +326,9 @@ async def get_video(
         is_private=video.is_private,
         tags=video.tags or [],
         created_at=video.created_at,
-        user_id=str(video.user_id)
+        user_id=str(video.user_id),
+        channel_id=str(video.channel_id) if video.channel_id else None,
+        views_count=video.views_count or 0
     )
 
 async def check_private_video_permission(viewer_id: str, owner_id: str) -> bool:
@@ -264,7 +365,7 @@ async def get_signed_url(
         signed_url = minio_client.presigned_get_object(
             settings.minio_bucket,
             video.minio_key,
-            expires=settings.signed_url_expiry_seconds
+            expires=timedelta(seconds=settings.signed_url_expiry_seconds)
         )
         return {"signed_url": signed_url}
     except S3Error as e:
@@ -364,6 +465,235 @@ async def record_view(
     await db.commit()
 
     return {"message": "View recorded"}
+
+# Channel endpoints
+@app.post("/channels", response_model=ChannelResponse)
+async def create_channel(
+    channel_data: ChannelCreate,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    logger.info(f"POST /channels - user_id from token: {user_id} (type: {type(user_id)})")
+    
+    # Check if user already has a channel
+    existing_channel = await Channel.get_by_owner(db, user_id)
+    logger.info(f"Existing channel check: {existing_channel}")
+    if existing_channel:
+        logger.warning(f"User {user_id} already has channel: {existing_channel.id}")
+        raise HTTPException(status_code=400, detail="User already has a channel")
+    
+    # Check if handle is already taken
+    existing_handle = await Channel.get_by_handle(db, channel_data.handle)
+    if existing_handle:
+        raise HTTPException(status_code=400, detail="Handle already taken")
+    
+    logger.info(f"Creating channel with owner_id: {user_id}")
+    channel = await Channel.create(db, **{
+        "name": channel_data.name,
+        "description": channel_data.description,
+        "handle": channel_data.handle,
+        "avatar_url": channel_data.avatar_url,
+        "banner_url": channel_data.banner_url,
+        "owner_id": user_id
+    })
+    logger.info(f"Channel created: id={channel.id}, owner_id={channel.owner_id}")
+    
+    return ChannelResponse(
+        id=str(channel.id),
+        name=channel.name,
+        description=channel.description,
+        handle=channel.handle,
+        avatar_url=channel.avatar_url,
+        banner_url=channel.banner_url,
+        owner_id=str(channel.owner_id),
+        subscribers_count=channel.subscribers_count,
+        is_verified=channel.is_verified,
+        created_at=channel.created_at
+    )
+
+# NOTE: /channels/my must be BEFORE /channels/{channel_id} to avoid routing conflicts
+@app.get("/channels/my", response_model=ChannelResponse)
+async def get_my_channel(
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    logger.info(f"GET /channels/my - user_id from token: {user_id} (type: {type(user_id)})")
+    channel = await Channel.get_by_owner(db, user_id)
+    logger.info(f"Channel lookup result: {channel}")
+    if not channel:
+        logger.warning(f"Channel not found for user_id: {user_id}")
+        raise HTTPException(status_code=404, detail="Channel not found")
+    
+    return ChannelResponse(
+        id=str(channel.id),
+        name=channel.name,
+        description=channel.description,
+        handle=channel.handle,
+        avatar_url=channel.avatar_url,
+        banner_url=channel.banner_url,
+        owner_id=str(channel.owner_id),
+        subscribers_count=channel.subscribers_count,
+        is_verified=channel.is_verified,
+        created_at=channel.created_at
+    )
+
+@app.get("/channels/{channel_id}", response_model=ChannelResponse)
+async def get_channel(
+    channel_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    channel = await Channel.get_by_id(db, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    
+    return ChannelResponse(
+        id=str(channel.id),
+        name=channel.name,
+        description=channel.description,
+        handle=channel.handle,
+        avatar_url=channel.avatar_url,
+        banner_url=channel.banner_url,
+        owner_id=str(channel.owner_id),
+        subscribers_count=channel.subscribers_count,
+        is_verified=channel.is_verified,
+        created_at=channel.created_at
+    )
+
+@app.get("/channels/handle/{handle}", response_model=ChannelResponse)
+async def get_channel_by_handle(
+    handle: str,
+    db: AsyncSession = Depends(get_db)
+):
+    channel = await Channel.get_by_handle(db, handle)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    
+    return ChannelResponse(
+        id=str(channel.id),
+        name=channel.name,
+        description=channel.description,
+        handle=channel.handle,
+        avatar_url=channel.avatar_url,
+        banner_url=channel.banner_url,
+        owner_id=str(channel.owner_id),
+        subscribers_count=channel.subscribers_count,
+        is_verified=channel.is_verified,
+        created_at=channel.created_at
+    )
+
+@app.get("/channels/{channel_id}/videos", response_model=List[VideoResponse])
+async def get_channel_videos(
+    channel_id: str,
+    skip: int = 0,
+    limit: int = 10,
+    db: AsyncSession = Depends(get_db)
+):
+    videos = await Video.get_all(db, skip=skip, limit=limit, channel_id=channel_id)
+    return [
+        VideoResponse(
+            id=str(v.id),
+            title=v.title,
+            description=v.description,
+            duration=str(v.duration) if v.duration else None,
+            resolution=v.resolution,
+            bitrate=v.bitrate,
+            file_size=v.file_size,
+            status=v.status,
+            hls_playlist_url=v.hls_playlist_url,
+            is_private=v.is_private,
+            tags=v.tags or [],
+            created_at=v.created_at,
+            user_id=str(v.user_id),
+            channel_id=str(v.channel_id) if v.channel_id else None,
+            views_count=v.views_count or 0
+        ) for v in videos
+    ]
+
+# Subscription endpoints
+@app.post("/channels/{channel_id}/subscribe", response_model=SubscriptionResponse)
+async def subscribe_to_channel(
+    channel_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    # Check if channel exists
+    channel = await Channel.get_by_id(db, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    
+    # Check if already subscribed
+    if await Subscription.is_subscribed(db, user_id, channel_id):
+        raise HTTPException(status_code=400, detail="Already subscribed")
+    
+    # Cannot subscribe to own channel
+    if str(channel.owner_id) == user_id:
+        raise HTTPException(status_code=400, detail="Cannot subscribe to own channel")
+    
+    subscription = await Subscription.create(db, **{
+        "subscriber_id": user_id,
+        "channel_id": channel_id
+    })
+    
+    return SubscriptionResponse(
+        id=str(subscription.id),
+        subscriber_id=str(subscription.subscriber_id),
+        channel_id=str(subscription.channel_id),
+        created_at=subscription.created_at
+    )
+
+@app.delete("/channels/{channel_id}/subscribe")
+async def unsubscribe_from_channel(
+    channel_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    # Check if channel exists
+    channel = await Channel.get_by_id(db, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    
+    # Check if subscribed
+    if not await Subscription.is_subscribed(db, user_id, channel_id):
+        raise HTTPException(status_code=400, detail="Not subscribed")
+    
+    await Subscription.delete(db, user_id, channel_id)
+    
+    return {"message": "Unsubscribed successfully"}
+
+@app.get("/channels/{channel_id}/is_subscribed")
+async def check_subscription(
+    channel_id: str,
+    user_id: Optional[str] = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    if not user_id:
+        return {"is_subscribed": False}
+    
+    is_subscribed = await Subscription.is_subscribed(db, user_id, channel_id)
+    return {"is_subscribed": is_subscribed}
+
+@app.get("/subscriptions", response_model=List[ChannelResponse])
+async def get_user_subscriptions(
+    skip: int = 0,
+    limit: int = 10,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    channels = await Subscription.get_user_subscriptions(db, user_id, skip=skip, limit=limit)
+    return [
+        ChannelResponse(
+            id=str(c.id),
+            name=c.name,
+            description=c.description,
+            handle=c.handle,
+            avatar_url=c.avatar_url,
+            banner_url=c.banner_url,
+            owner_id=str(c.owner_id),
+            subscribers_count=c.subscribers_count,
+            is_verified=c.is_verified,
+            created_at=c.created_at
+        ) for c in channels
+    ]
 
 @app.get("/health")
 async def health_check():

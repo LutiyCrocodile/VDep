@@ -1,42 +1,18 @@
-# Multi-stage build for video-service
-FROM python:3.11-slim as builder
+# Simplified build for video-service (without FFmpeg for testing)
+FROM python:3.11-slim
 
-# Install system dependencies for video processing
+# Install basic system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
-    ffmpeg \
-    libsm6 \
-    libxext6 \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    libsm6 \
-    libxrender-dev \
-    libxext6 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Health check uses curl
 
 # Install Python dependencies
 RUN pip install poetry
 COPY pyproject.toml ./
-RUN poetry config virtualenvs.create false && poetry install --no-dev --no-interaction --no-ansi --no-root
-
-FROM python:3.11-slim as runtime
-
-# Install runtime system dependencies
-RUN apt-get update && apt-get install -y \
-    ffmpeg \
-    libsm6 \
-    libxext6 \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    libsm6 \
-    libxrender-dev \
-    libxext6 \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy dependencies from builder
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+RUN poetry config virtualenvs.create false && poetry install --only=main --no-interaction --no-ansi --no-root
 
 # Copy application code
 WORKDIR /app

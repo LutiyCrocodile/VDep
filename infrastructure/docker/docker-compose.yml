@@ -9,7 +9,6 @@ services:
       POSTGRES_PASSWORD: password
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
     ports:
       - "5432:5432"
     healthcheck:
@@ -154,8 +153,6 @@ services:
         condition: service_healthy
       auth-service:
         condition: service_healthy
-      video-service:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
       interval: 30s
@@ -195,6 +192,8 @@ services:
     build:
       context: ../../services/video-service
       dockerfile: Dockerfile
+    volumes:
+      - ../../services/video-service/src:/app/src:ro
     environment:
       DATABASE_URL: postgresql+asyncpg://user:password@db:5432/video_hosting
       MINIO_ENDPOINT: minio:9000
@@ -281,8 +280,6 @@ services:
         condition: service_healthy
       auth-service:
         condition: service_healthy
-      notification-service:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
@@ -309,10 +306,6 @@ services:
       video-service:
         condition: service_healthy
       streaming-service:
-        condition: service_healthy
-      notification-service:
-        condition: service_healthy
-      search-service:
         condition: service_healthy
       minio:
         condition: service_healthy

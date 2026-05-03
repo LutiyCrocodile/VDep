@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y \
 # Install Python dependencies
 RUN pip install poetry
 COPY pyproject.toml ./
-RUN poetry config virtualenvs.create false && poetry install --no-dev --no-interaction --no-ansi --no-root
+RUN poetry config virtualenvs.create false && poetry install --only=main --no-interaction --no-ansi --no-root
 
 FROM python:3.11-slim as runtime
 
@@ -19,6 +19,7 @@ FROM python:3.11-slim as runtime
 RUN apt-get update && apt-get install -y \
     libldap2-dev \
     libsasl2-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy dependencies from builder
