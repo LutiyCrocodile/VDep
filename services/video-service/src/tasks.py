@@ -171,8 +171,8 @@ def transcode_video(self, video_id: str, minio_key: str):
             master_minio_key = f"{video_id}/hls/master.m3u8"
             minio_client.fput_object(settings.minio_bucket, master_minio_key, master_playlist_path)
 
-            # Generate HLS playlist URL (using Nginx VOD module)
-            hls_url = f"/vod/{video_id}/master.m3u8"
+            # Generate HLS playlist URL (using nginx proxy to MinIO)
+            hls_url = f"/videos/{video_id}/hls/master.m3u8"
 
             # Update database
             update_video_status(video_id, 'ready', hls_url)

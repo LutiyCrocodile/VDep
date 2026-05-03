@@ -1,8 +1,6 @@
 {
-  "/page": "app/page.js",
+  "/watch/page": "app/watch/page.js",
   "/channel/[handle]/page": "app/channel/[handle]/page.js",
   "/upload/page": "app/upload/page.js",
-  "/login/page": "app/login/page.js",
-  "/liked/page": "app/liked/page.js",
-  "/watch/page": "app/watch/page.js"
+  "/page": "app/page.js"
 }

@@ -294,6 +294,15 @@ def get_thumbnail_url(thumbnail_path: str) -> str:
     # Return MinIO presigned URL pattern
     return f"http://localhost:9000/videos{thumbnail_path}"
 
+def get_playlist_url(playlist_path: str) -> str:
+    """Convert playlist path to full URL accessible by frontend"""
+    if not playlist_path:
+        return ""
+    if playlist_path.startswith('http'):
+        return playlist_path
+    # Return full URL through nginx proxy
+    return f"http://localhost{playlist_path}"
+
 @app.get("/videos", response_model=List[VideoResponse])
 async def list_videos(
     skip: int = 0,
@@ -312,7 +321,7 @@ async def list_videos(
             bitrate=v.bitrate,
             file_size=v.file_size,
             status=v.status,
-            hls_playlist_url=v.hls_playlist_url,
+            hls_playlist_url=get_playlist_url(v.hls_playlist_url),
             thumbnail_url=get_thumbnail_url(v.thumbnail_url),
             is_private=v.is_private,
             tags=v.tags or [],
@@ -463,17 +472,13 @@ async def get_video_playlist(
     if not video.hls_playlist_url:
         raise HTTPException(status_code=404, detail="Video not ready for streaming")
 
-    # Generate presigned URL for master playlist
+    # Return direct nginx URL for HLS playlist (public access through nginx)
     try:
-        master_key = f"{video_id}/hls/master.m3u8"
-        signed_url = minio_client.presigned_get_object(
-            settings.minio_bucket,
-            master_key,
-            expires=timedelta(seconds=settings.signed_url_expiry_seconds)
-        )
-        return {"playlist_url": signed_url, "status": video.status}
-    except S3Error as e:
-        logger.error(f"MinIO playlist error: {e}")
+        # Return full URL that works through nginx proxy
+        playlist_url = f"http://localhost/videos/{video_id}/hls/master.m3u8"
+        return {"playlist_url": playlist_url, "status": video.status}
+    except Exception as e:
+        logger.error(f"Playlist URL error: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate playlist URL")
 
 @app.put("/videos/{video_id}")
