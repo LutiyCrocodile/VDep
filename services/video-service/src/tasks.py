@@ -154,22 +154,19 @@ def transcode_video(self, video_id: str, minio_key: str):
                     logger.error(f"FFmpeg error for {quality}: {result.stderr}")
                     raise Exception(f"Transcoding failed for {quality}")
 
-                # Upload HLS files to MinIO
-                hls_minio_key = f"{video_id}/hls/{quality}/"
-                upload_directory_to_minio(quality_dir, hls_minio_key)
-
-                # Add to master playlist
+            # Add to master playlist
+            for quality in qualities:
                 bandwidth = get_bandwidth_for_quality(quality)
                 master_playlist_content += f'#EXT-X-STREAM-INF:BANDWIDTH={bandwidth},RESOLUTION={get_resolution_for_quality(quality)}\n'
                 master_playlist_content += f'{quality}/playlist.m3u8\n'
 
-            # Upload master playlist
+            # Save master playlist
             master_playlist_path = os.path.join(hls_dir, "master.m3u8")
             with open(master_playlist_path, 'w') as f:
                 f.write(master_playlist_content)
 
-            master_minio_key = f"{video_id}/hls/master.m3u8"
-            minio_client.fput_object(settings.minio_bucket, master_minio_key, master_playlist_path)
+            # Upload all HLS files to MinIO
+            upload_hls_to_minio(hls_dir, video_id)
 
             # Generate HLS playlist URL (using nginx proxy to MinIO)
             hls_url = f"/videos/{video_id}/hls/master.m3u8"
@@ -305,20 +302,31 @@ def get_resolution_for_quality(quality: str) -> str:
     }
     return resolutions.get(quality, "640x360")
 
-def upload_directory_to_minio(local_dir: str, minio_prefix: str):
-    """Upload directory contents to MinIO recursively"""
-    for root, dirs, files in os.walk(local_dir):
-        for file in files:
-            local_path = os.path.join(root, file)
-            # Calculate relative path from local_dir
-            rel_path = os.path.relpath(local_path, local_dir)
-            minio_key = f"{minio_prefix}{rel_path}"
-
-            try:
-                minio_client.fput_object(settings.minio_bucket, minio_key, local_path)
-                logger.info(f"Uploaded {minio_key}")
-            except S3Error as e:
-                logger.error(f"Failed to upload {minio_key}: {e}")
+def upload_hls_to_minio(hls_dir: str, video_id: str):
+    """Upload HLS files to MinIO with correct structure"""
+    # Upload master playlist first
+    master_path = os.path.join(hls_dir, "master.m3u8")
+    if os.path.exists(master_path):
+        master_key = f"{video_id}/hls/master.m3u8"
+        try:
+            minio_client.fput_object(settings.minio_bucket, master_key, master_path)
+            logger.info(f"Uploaded master playlist: {master_key}")
+        except S3Error as e:
+            logger.error(f"Failed to upload master playlist: {e}")
+    
+    # Upload quality playlists and segments
+    for quality in os.listdir(hls_dir):
+        quality_path = os.path.join(hls_dir, quality)
+        if os.path.isdir(quality_path):
+            for file in os.listdir(quality_path):
+                local_path = os.path.join(quality_path, file)
+                if os.path.isfile(local_path):
+                    minio_key = f"{video_id}/hls/{quality}/{file}"
+                    try:
+                        minio_client.fput_object(settings.minio_bucket, minio_key, local_path)
+                        logger.info(f"Uploaded {minio_key}")
+                    except S3Error as e:
+                        logger.error(f"Failed to upload {minio_key}: {e}")
 
 @celery_app.task
 def generate_subtitles(video_id: str, minio_key: str):

@@ -68,30 +68,76 @@ export default function WatchPage() {
   // Initialize HLS player
   useEffect(() => {
     const videoElement = videoRef.current;
-    if (!videoElement || !playlistUrl) return;
+    if (!videoElement || !playlistUrl) {
+      console.log('No video element or playlist URL');
+      return;
+    }
 
     console.log('HLS Playlist URL:', playlistUrl);
 
+    // Clean up existing HLS instance
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+
     if (Hls.isSupported()) {
+      console.log('HLS.js is supported, initializing...');
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: true,
+        debug: true,
+        xhrSetup: function(xhr, url) {
+          console.log('HLS loading:', url);
+        }
       });
       hlsRef.current = hls;
       
-      hls.loadSource(playlistUrl);
-      hls.attachMedia(videoElement);
+      hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+        console.log('HLS media attached');
+        hls.loadSource(playlistUrl);
+      });
       
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        console.log('HLS manifest loaded');
+      hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
+        console.log('HLS manifest loaded, qualities:', data.levels.length);
+        // Auto-play if user clicked play
+        if (isPlaying) {
+          videoElement.play().catch(e => console.log('Auto-play failed:', e));
+        }
       });
       
       hls.on(Hls.Events.ERROR, (event, data) => {
-        console.error('HLS error:', data);
+        console.error('HLS error:', event, data);
+        if (data.fatal) {
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              console.error('Network error, trying to recover...');
+              hls.startLoad();
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              console.error('Media error, trying to recover...');
+              hls.recoverMediaError();
+              break;
+            default:
+              console.error('Fatal error, cannot recover');
+              hls.destroy();
+              break;
+          }
+        }
       });
+
+      hls.attachMedia(videoElement);
     } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-      // Native HLS support (Safari)
+      console.log('Native HLS support detected (Safari)');
       videoElement.src = playlistUrl;
+      videoElement.addEventListener('loadedmetadata', () => {
+        console.log('Native HLS loaded');
+        if (isPlaying) {
+          videoElement.play().catch(e => console.log('Auto-play failed:', e));
+        }
+      });
+    } else {
+      console.error('HLS not supported on this browser');
     }
 
     return () => {
@@ -100,7 +146,7 @@ export default function WatchPage() {
         hlsRef.current = null;
       }
     };
-  }, [playlistUrl]);
+  }, [playlistUrl, isPlaying]);
 
   // Handle play/pause
   useEffect(() => {

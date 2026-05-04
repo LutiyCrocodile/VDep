@@ -27,7 +27,7 @@ from .celery_app import celery_app
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# MinIO client
+# MinIO client (internal for service operations)
 minio_client = Minio(
     settings.minio_endpoint,
     access_key=settings.minio_access_key,
@@ -291,8 +291,8 @@ def get_thumbnail_url(thumbnail_path: str) -> str:
         return ""
     if thumbnail_path.startswith('http'):
         return thumbnail_path
-    # Return MinIO presigned URL pattern
-    return f"http://localhost:9000/videos{thumbnail_path}"
+    # Return nginx proxy URL
+    return f"http://localhost/videos{thumbnail_path}"
 
 def get_playlist_url(playlist_path: str) -> str:
     """Convert playlist path to full URL accessible by frontend"""
@@ -300,8 +300,8 @@ def get_playlist_url(playlist_path: str) -> str:
         return ""
     if playlist_path.startswith('http'):
         return playlist_path
-    # Return full URL through nginx proxy
-    return f"http://localhost{playlist_path}"
+    # Return nginx proxy URL
+    return f"http://localhost/videos{playlist_path}"
 
 @app.get("/videos", response_model=List[VideoResponse])
 async def list_videos(
@@ -440,17 +440,12 @@ async def get_video_thumbnail(
     if not video.thumbnail_url:
         raise HTTPException(status_code=404, detail="Thumbnail not available")
 
-    # Generate presigned URL for thumbnail
+    # Return nginx proxy URL for thumbnail
     try:
-        thumbnail_key = f"{video_id}/thumbnail.jpg"
-        signed_url = minio_client.presigned_get_object(
-            settings.minio_bucket,
-            thumbnail_key,
-            expires=timedelta(seconds=settings.signed_url_expiry_seconds)
-        )
-        return {"thumbnail_url": signed_url}
-    except S3Error as e:
-        logger.error(f"MinIO thumbnail error: {e}")
+        thumbnail_url = f"http://localhost/videos/{video_id}/thumbnail.jpg"
+        return {"thumbnail_url": thumbnail_url}
+    except Exception as e:
+        logger.error(f"Failed to generate thumbnail URL: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate thumbnail URL")
 
 @app.get("/videos/{video_id}/playlist")
@@ -472,19 +467,14 @@ async def get_video_playlist(
     if not video.hls_playlist_url:
         raise HTTPException(status_code=404, detail="Video not ready for streaming")
 
-    # Return direct nginx URL for HLS playlist (public access through nginx)
+    # Return nginx proxy URL for playlist (bypasses MinIO auth)
     try:
-        # Return full URL that works through nginx proxy
+        # Use nginx proxy to access MinIO - no signature needed
         playlist_url = f"http://localhost/videos/{video_id}/hls/master.m3u8"
         return {"playlist_url": playlist_url, "status": video.status}
     except Exception as e:
-        logger.error(f"Playlist URL error: {e}")
+        logger.error(f"Failed to generate playlist URL: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate playlist URL")
-
-@app.put("/videos/{video_id}")
-async def update_video(
-    video_id: str,
-    title: Optional[str] = None,
     description: Optional[str] = None,
     is_private: Optional[bool] = None,
     tags: Optional[str] = None,
