@@ -1,7 +1,11 @@
 {
-  "/page": "app/page.js",
-  "/login/page": "app/login/page.js",
   "/watch/page": "app/watch/page.js",
+  "/page": "app/page.js",
+  "/upload/page": "app/upload/page.js",
   "/channel/[handle]/page": "app/channel/[handle]/page.js",
-  "/upload/page": "app/upload/page.js"
+  "/search/page": "app/search/page.js",
+  "/go-live/page": "app/go-live/page.js",
+  "/history/page": "app/history/page.js",
+  "/watch-later/page": "app/watch-later/page.js",
+  "/liked/page": "app/liked/page.js"
 }

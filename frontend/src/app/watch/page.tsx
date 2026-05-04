@@ -43,13 +43,17 @@ export default function WatchPage() {
   const [currentQuality, setCurrentQuality] = useState('auto');
   const [showQualityMenu, setShowQualityMenu] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [playlistUrl, setPlaylistUrl] = useState<string>('');
   const [likesCount, setLikesCount] = useState(0);
   const [userLiked, setUserLiked] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [showShareToast, setShowShareToast] = useState(false);
+  const [availableQualities, setAvailableQualities] = useState<{level: number, name: string}[]>([]);
+  const [isSeeking, setIsSeeking] = useState(false);
   const hlsRef = useRef<Hls | null>(null);
+  const progressRef = useRef<HTMLDivElement>(null);
 
   // Fetch signed playlist URL
   useEffect(() => {
@@ -87,19 +91,27 @@ export default function WatchPage() {
         enableWorker: true,
         lowLatencyMode: true,
         debug: true,
+        capLevelToPlayerSize: true,
+        startLevel: -1,
         xhrSetup: function(xhr, url) {
           console.log('HLS loading:', url);
         }
       });
       hlsRef.current = hls;
-      
+
       hls.on(Hls.Events.MEDIA_ATTACHED, () => {
         console.log('HLS media attached');
         hls.loadSource(playlistUrl);
       });
-      
+
       hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
         console.log('HLS manifest loaded, qualities:', data.levels.length);
+        // Build quality list
+        const qualities = data.levels.map((level, index) => ({
+          level: index,
+          name: level.height ? `${level.height}p` : `Level ${index + 1}`
+        }));
+        setAvailableQualities(qualities);
         // Auto-play if user clicked play
         if (isPlaying) {
           videoElement.play().catch(e => console.log('Auto-play failed:', e));
@@ -179,6 +191,51 @@ export default function WatchPage() {
     if (videoRef.current) {
       videoRef.current.volume = newVolume;
     }
+  };
+
+  // Quality control
+  const handleQualityChange = (quality: string) => {
+    setCurrentQuality(quality);
+    if (!hlsRef.current) return;
+    
+    if (quality === 'auto') {
+      hlsRef.current.currentLevel = -1; // Auto
+    } else {
+      // Find level index by quality name (e.g., "720p")
+      const qualityNum = parseInt(quality);
+      const levelIndex = availableQualities.findIndex(q => q.name === quality);
+      if (levelIndex !== -1) {
+        hlsRef.current.currentLevel = availableQualities[levelIndex].level;
+      }
+    }
+  };
+
+  // Seek control
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!progressRef.current || !videoRef.current || !videoDuration) return;
+    
+    const rect = progressRef.current.getBoundingClientRect();
+    const pos = (e.clientX - rect.left) / rect.width;
+    const newTime = pos * videoDuration;
+    
+    videoRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+  };
+
+  // Handle progress bar interaction
+  const handleProgressMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    setIsSeeking(true);
+    handleSeek(e);
+  };
+
+  const handleProgressMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isSeeking) {
+      handleSeek(e);
+    }
+  };
+
+  const handleProgressMouseUp = () => {
+    setIsSeeking(false);
   };
 
   // Like handlers
@@ -295,9 +352,10 @@ export default function WatchPage() {
   }, [videoId]);
 
   const formatDuration = (seconds?: number) => {
-    if (!seconds) return '0:00';
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
+    if (!seconds || isNaN(seconds)) return '0:00';
+    const roundedSeconds = Math.floor(seconds);
+    const mins = Math.floor(roundedSeconds / 60);
+    const secs = roundedSeconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
@@ -357,7 +415,17 @@ export default function WatchPage() {
                 className="w-full h-full"
                 poster={video.thumbnail_url || `https://via.placeholder.com/1280x720/1a1a3e/FFFFFF?text=${encodeURIComponent(video.title)}`}
                 onClick={() => setIsPlaying(!isPlaying)}
-                onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+                onTimeUpdate={(e) => {
+                  if (!isSeeking) {
+                    setCurrentTime(e.currentTarget.currentTime);
+                  }
+                }}
+                onLoadedMetadata={(e) => {
+                  setVideoDuration(e.currentTarget.duration);
+                }}
+                onDurationChange={(e) => {
+                  setVideoDuration(e.currentTarget.duration);
+                }}
                 playsInline
               />
               
@@ -378,10 +446,17 @@ export default function WatchPage() {
               {/* Controls overlay */}
               <div className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[#0a0a1a] via-[#0a0a1a]/80 to-transparent p-6 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
                 {/* Progress bar */}
-                <div className="w-full h-1.5 bg-[#27274a] rounded-full cursor-pointer mb-4 group/progress">
+                <div 
+                  ref={progressRef}
+                  className="w-full h-1.5 bg-[#27274a] rounded-full cursor-pointer mb-4 group/progress"
+                  onMouseDown={handleProgressMouseDown}
+                  onMouseMove={handleProgressMouseMove}
+                  onMouseUp={handleProgressMouseUp}
+                  onMouseLeave={handleProgressMouseUp}
+                >
                   <div 
                     className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full relative"
-                    style={{ width: `${(currentTime / (video.duration || 1)) * 100}%` }}
+                    style={{ width: `${(currentTime / (videoDuration || 1)) * 100}%` }}
                   >
                     <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover/progress:opacity-100 transition-opacity" />
                   </div>
@@ -403,7 +478,7 @@ export default function WatchPage() {
                         </svg>
                       )}
                     </button>
-                    <span className="text-white text-sm font-medium">{formatDuration(currentTime)} / {formatDuration(video.duration)}</span>
+                    <span className="text-white text-sm font-medium">{formatDuration(currentTime)} / {formatDuration(videoDuration)}</span>
                   </div>
                   
                   <div className="flex items-center gap-3">
@@ -417,17 +492,27 @@ export default function WatchPage() {
                       </button>
                       {showQualityMenu && (
                         <div className="absolute bottom-full right-0 mb-2 bg-[#1a1a3e] border border-[#27274a] rounded-xl overflow-hidden shadow-xl min-w-[120px]">
-                          {['auto', '1080p', '720p', '480p', '360p'].map((quality) => (
+                          <button
+                            onClick={() => { handleQualityChange('auto'); setShowQualityMenu(false); }}
+                            className={`w-full px-4 py-2 text-sm text-left transition-colors ${
+                              currentQuality === 'auto'
+                                ? 'bg-gradient-to-r from-indigo-600/30 to-violet-600/30 text-white'
+                                : 'text-zinc-400 hover:bg-[#252550] hover:text-white'
+                            }`}
+                          >
+                            Авто
+                          </button>
+                          {availableQualities.map((quality) => (
                             <button
-                              key={quality}
-                              onClick={() => { setCurrentQuality(quality); setShowQualityMenu(false); }}
+                              key={quality.level}
+                              onClick={() => { handleQualityChange(quality.name); setShowQualityMenu(false); }}
                               className={`w-full px-4 py-2 text-sm text-left transition-colors ${
-                                currentQuality === quality 
-                                  ? 'bg-gradient-to-r from-indigo-600/30 to-violet-600/30 text-white' 
+                                currentQuality === quality.name
+                                  ? 'bg-gradient-to-r from-indigo-600/30 to-violet-600/30 text-white'
                                   : 'text-zinc-400 hover:bg-[#252550] hover:text-white'
                               }`}
                             >
-                              {quality === 'auto' ? 'Авто' : quality}
+                              {quality.name}
                             </button>
                           ))}
                         </div>
