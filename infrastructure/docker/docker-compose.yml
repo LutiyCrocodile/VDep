@@ -82,7 +82,7 @@ services:
     entrypoint: >
       sh -c "
         sleep 5 &&
-        mc config host add local http://minio:9000 minioadmin minioadmin &&
+        mc alias set local http://minio:9000 minioadmin minioadmin &&
         mc mb -p local/videos &&
         mc anonymous set download local/videos &&
         echo 'MinIO bucket configured as public'

@@ -291,8 +291,8 @@ def get_thumbnail_url(thumbnail_path: str) -> str:
         return ""
     if thumbnail_path.startswith('http'):
         return thumbnail_path
-    # Return nginx proxy URL
-    return f"http://localhost/videos{thumbnail_path}"
+    # Return direct URL to MinIO (bucket is now public)
+    return f"http://localhost:9000/{settings.minio_bucket}{thumbnail_path}"
 
 def get_playlist_url(playlist_path: str) -> str:
     """Convert playlist path to full URL accessible by frontend"""
@@ -300,8 +300,8 @@ def get_playlist_url(playlist_path: str) -> str:
         return ""
     if playlist_path.startswith('http'):
         return playlist_path
-    # Return nginx proxy URL
-    return f"http://localhost/videos{playlist_path}"
+    # Return direct URL to MinIO (bucket is now public)
+    return f"http://localhost:9000/{settings.minio_bucket}{playlist_path}"
 
 @app.get("/videos", response_model=List[VideoResponse])
 async def list_videos(
@@ -440,9 +440,9 @@ async def get_video_thumbnail(
     if not video.thumbnail_url:
         raise HTTPException(status_code=404, detail="Thumbnail not available")
 
-    # Return nginx proxy URL for thumbnail
+    # Return direct URL to MinIO (bucket is now public)
     try:
-        thumbnail_url = f"http://localhost/videos/{video_id}/thumbnail.jpg"
+        thumbnail_url = f"http://localhost:9000/{settings.minio_bucket}/{video_id}/thumbnail.jpg"
         return {"thumbnail_url": thumbnail_url}
     except Exception as e:
         logger.error(f"Failed to generate thumbnail URL: {e}")
@@ -467,14 +467,18 @@ async def get_video_playlist(
     if not video.hls_playlist_url:
         raise HTTPException(status_code=404, detail="Video not ready for streaming")
 
-    # Return nginx proxy URL for playlist (bypasses MinIO auth)
+    # Return direct URL to MinIO (bucket is now public)
     try:
-        # Use nginx proxy to access MinIO - no signature needed
-        playlist_url = f"http://localhost/videos/{video_id}/hls/master.m3u8"
+        playlist_url = f"http://localhost:9000/{settings.minio_bucket}/{video_id}/hls/master.m3u8"
         return {"playlist_url": playlist_url, "status": video.status}
     except Exception as e:
         logger.error(f"Failed to generate playlist URL: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate playlist URL")
+
+@app.put("/videos/{video_id}")
+async def update_video(
+    video_id: str,
+    title: Optional[str] = None,
     description: Optional[str] = None,
     is_private: Optional[bool] = None,
     tags: Optional[str] = None,
