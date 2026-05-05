@@ -1,17 +1,36 @@
-# Celery worker with FFmpeg for video processing
-FROM python:3.11-slim
+# Celery worker with FFmpeg for video processing (CPU transcoding)
+FROM ubuntu:22.04
 
-# Install system dependencies including FFmpeg
-RUN apt-get update && apt-get install -y \
+# Set timezone non-interactively
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+# Install Python 3.11 and system dependencies
+RUN apt-get update && apt-get install -y software-properties-common tzdata && \
+    add-apt-repository -y ppa:deadsnakes/ppa && \
+    apt-get update && apt-get install -y \
+    python3.11 \
+    python3.11-venv \
+    python3.11-dev \
+    python3-pip \
     gcc \
     curl \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-RUN pip install poetry
+# Create python3.11 as default python
+RUN ln -sf /usr/bin/python3.11 /usr/bin/python && \
+    ln -sf /usr/bin/python3.11 /usr/local/bin/python && \
+    python --version
+
+# Install Poetry for Python 3.11
+RUN python3.11 -m pip install --upgrade pip && \
+    python3.11 -m pip install poetry && \
+    poetry config virtualenvs.create false
+
+# Install dependencies
 COPY pyproject.toml ./
-RUN poetry config virtualenvs.create false && poetry install --only=main --no-interaction --no-ansi --no-root
+RUN poetry install --only=main --no-interaction --no-ansi --no-root
 
 # Copy application code
 WORKDIR /app
@@ -21,5 +40,5 @@ COPY src/ ./src/
 RUN useradd --create-home --shell /bin/bash app && chown -R app:app /app
 USER app
 
-# Run Celery worker
-CMD ["celery", "-A", "src.celery_app", "worker", "--loglevel=info", "--queues=video_transcoding,video_processing", "--concurrency=2"]
+# Run Celery worker with higher concurrency
+CMD ["python", "-m", "celery", "-A", "src.celery_app", "worker", "--loglevel=info", "--queues=video_transcoding,video_processing", "--concurrency=4"]

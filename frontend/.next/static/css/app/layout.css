@@ -624,6 +624,9 @@ video {
     max-width: 1400px;
   }
 }
+.pointer-events-none {
+  pointer-events: none;
+}
 .fixed {
   position: fixed;
 }
@@ -692,6 +695,15 @@ video {
 }
 .z-50 {
   z-index: 50;
+}
+.z-10 {
+  z-index: 10;
+}
+.z-20 {
+  z-index: 20;
+}
+.z-30 {
+  z-index: 30;
 }
 .mx-4 {
   margin-left: 1rem;
@@ -935,6 +947,14 @@ video {
   --tw-translate-y: -50%;
   transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
 }
+.translate-y-0 {
+  --tw-translate-y: 0px;
+  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
+}
+.translate-y-full {
+  --tw-translate-y: 100%;
+  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
+}
 @keyframes pulse {
 
   50% {
@@ -955,6 +975,12 @@ video {
 }
 .cursor-pointer {
   cursor: pointer;
+}
+.cursor-not-allowed {
+  cursor: not-allowed;
+}
+.cursor-wait {
+  cursor: wait;
 }
 .resize-none {
   resize: none;
@@ -1231,6 +1257,15 @@ video {
 .bg-zinc-700 {
   --tw-bg-opacity: 1;
   background-color: rgb(63 63 70 / var(--tw-bg-opacity, 1));
+}
+.bg-\[\#0a0a1a\]\/40 {
+  background-color: rgb(10 10 26 / 0.4);
+}
+.bg-zinc-700\/50 {
+  background-color: rgb(63 63 70 / 0.5);
+}
+.bg-indigo-500\/60 {
+  background-color: rgb(99 102 241 / 0.6);
 }
 .bg-gradient-to-b {
   background-image: linear-gradient(to bottom, var(--tw-gradient-stops));
@@ -1671,6 +1706,9 @@ video {
 .duration-500 {
   transition-duration: 500ms;
 }
+.ease-out {
+  transition-timing-function: cubic-bezier(0, 0, 0.2, 1);
+}
 @keyframes enter {
 
   from {
@@ -1693,6 +1731,12 @@ video {
 }
 .duration-500 {
   animation-duration: 500ms;
+}
+.ease-out {
+  animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+}
+.paused {
+  animation-play-state: paused;
 }
 
 .focus-within\:border-indigo-500\/50:focus-within {
@@ -1779,6 +1823,10 @@ video {
 .hover\:bg-zinc-600:hover {
   --tw-bg-opacity: 1;
   background-color: rgb(82 82 91 / var(--tw-bg-opacity, 1));
+}
+
+.hover\:bg-indigo-500\/80:hover {
+  background-color: rgb(99 102 241 / 0.8);
 }
 
 .hover\:from-\[\#4338ca\]:hover {

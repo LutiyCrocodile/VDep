@@ -257,6 +257,11 @@ export const videosAPI = {
     return response.data;
   },
   
+  recordView: async (videoId: string) => {
+    const response = await videoApiClient.post(`/videos/${videoId}/views`);
+    return response.data;
+  },
+  
   // Share - get shareable link
   getShareLink: (videoId: string) => {
     return `${typeof window !== 'undefined' ? window.location.origin : ''}/watch?v=${videoId}`;

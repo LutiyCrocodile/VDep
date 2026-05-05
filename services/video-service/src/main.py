@@ -311,6 +311,20 @@ async def list_videos(
     db: AsyncSession = Depends(get_db)
 ):
     videos = await Video.get_all(db, skip=skip, limit=limit, user_id=current_user_id)
+    
+    # Get channel names for all videos
+    from .database import Channel
+    channel_ids = [v.channel_id for v in videos if v.channel_id]
+    channels = {}
+    if channel_ids:
+        for cid in set(channel_ids):
+            try:
+                channel = await Channel.get_by_id(db, str(cid))
+                if channel:
+                    channels[str(cid)] = channel.name
+            except:
+                pass
+    
     return [
         VideoResponse(
             id=str(v.id),
@@ -329,7 +343,7 @@ async def list_videos(
             user_id=str(v.user_id),
             channel_id=str(v.channel_id) if v.channel_id else None,
             views_count=v.views_count or 0,
-            owner_username=v.owner_username if hasattr(v, 'owner_username') else None
+            owner_username=channels.get(str(v.channel_id), "Неизвестный") if v.channel_id else "Неизвестный"
         ) for v in videos
     ]
 
@@ -815,6 +829,10 @@ async def get_channel_videos(
     limit: int = 10,
     db: AsyncSession = Depends(get_db)
 ):
+    # Get channel info for owner_username
+    channel = await Channel.get_by_id(db, channel_id)
+    channel_name = channel.name if channel else "Неизвестный"
+    
     videos = await Video.get_all(db, skip=skip, limit=limit, channel_id=channel_id)
     return [
         VideoResponse(
@@ -827,13 +845,14 @@ async def get_channel_videos(
             file_size=v.file_size,
             status=v.status,
             hls_playlist_url=v.hls_playlist_url,
-            thumbnail_url=v.thumbnail_url,
+            thumbnail_url=get_thumbnail_url(v.thumbnail_url),
             is_private=v.is_private,
             tags=v.tags or [],
             created_at=v.created_at,
             user_id=str(v.user_id),
             channel_id=str(v.channel_id) if v.channel_id else None,
-            views_count=v.views_count or 0
+            views_count=v.views_count or 0,
+            owner_username=channel_name
         ) for v in videos
     ]
 

@@ -52,8 +52,67 @@ export default function WatchPage() {
   const [showShareToast, setShowShareToast] = useState(false);
   const [availableQualities, setAvailableQualities] = useState<{level: number, name: string}[]>([]);
   const [isSeeking, setIsSeeking] = useState(false);
+  const [playerReady, setPlayerReady] = useState(false);
+  const [isVideoLoading, setIsVideoLoading] = useState(false);
+  const [mouseActive, setMouseActive] = useState(true);
   const hlsRef = useRef<Hls | null>(null);
   const progressRef = useRef<HTMLDivElement>(null);
+  const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const viewRecordedRef = useRef(false);
+
+  // Reset player state when video changes
+  useEffect(() => {
+    setIsPlaying(false);
+    setIsVideoLoading(false);
+    setCurrentTime(0);
+    setVideoDuration(0);
+    setPlayerReady(false);
+    setMouseActive(true);
+    setAvailableQualities([]);
+    viewRecordedRef.current = false; // Reset view flag for new video
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+    }
+  }, [videoId]);
+
+  // Record view when video starts playing
+  const recordVideoView = async () => {
+    if (!videoId || viewRecordedRef.current) return;
+    
+    try {
+      await videosAPI.recordView(videoId);
+      viewRecordedRef.current = true;
+      console.log('View recorded for video:', videoId);
+    } catch (err) {
+      console.error('Failed to record view:', err);
+    }
+  };
+
+  // Handle mouse inactivity
+  const handleMouseActivity = () => {
+    setMouseActive(true);
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+    }
+    inactivityTimerRef.current = setTimeout(() => {
+      if (isPlaying) {
+        setMouseActive(false);
+      }
+    }, 1000);
+  };
+
+  // Clear timer on unmount
+  useEffect(() => {
+    return () => {
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+      }
+    };
+  }, []);
 
   // Fetch signed playlist URL
   useEffect(() => {
@@ -69,108 +128,133 @@ export default function WatchPage() {
     fetchPlaylist();
   }, [videoId, video?.status]);
 
-  // Initialize HLS player
-  useEffect(() => {
+  // Initialize HLS and handle play
+  const handlePlay = async () => {
+    if (!playlistUrl) return;
+    
     const videoElement = videoRef.current;
-    if (!videoElement || !playlistUrl) {
-      console.log('No video element or playlist URL');
+    if (!videoElement) return;
+
+    // If already playing, just toggle
+    if (playerReady && isPlaying) {
+      videoElement.pause();
+      setIsPlaying(false);
       return;
     }
 
-    console.log('HLS Playlist URL:', playlistUrl);
-
-    // Clean up existing HLS instance
-    if (hlsRef.current) {
-      hlsRef.current.destroy();
-      hlsRef.current = null;
+    // If already loaded but paused, play
+    if (playerReady && !isPlaying) {
+      videoElement.play().then(() => {
+        setIsPlaying(true);
+        recordVideoView(); // Record view when user starts watching
+      }).catch(() => {});
+      return;
     }
 
+    // Start loading
+    setIsVideoLoading(true);
+    console.log('Starting video load...');
+
     if (Hls.isSupported()) {
-      console.log('HLS.js is supported, initializing...');
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: true,
         debug: true,
-        capLevelToPlayerSize: true,
-        startLevel: -1,
-        xhrSetup: function(xhr, url) {
-          console.log('HLS loading:', url);
-        }
+        startLevel: 0, // Start with lowest quality
       });
       hlsRef.current = hls;
 
       hls.on(Hls.Events.MEDIA_ATTACHED, () => {
-        console.log('HLS media attached');
+        console.log('HLS attached, loading source...');
         hls.loadSource(playlistUrl);
       });
 
       hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
-        console.log('HLS manifest loaded, qualities:', data.levels.length);
-        // Build quality list
-        const qualities = data.levels.map((level, index) => ({
-          level: index,
-          name: level.height ? `${level.height}p` : `Level ${index + 1}`
-        }));
-        setAvailableQualities(qualities);
-        // Auto-play if user clicked play
-        if (isPlaying) {
-          videoElement.play().catch(e => console.log('Auto-play failed:', e));
+        console.log('Manifest parsed, levels:', data.levels.length);
+        setAvailableQualities(data.levels.map((l, i) => ({
+          level: i,
+          name: l.height ? `${l.height}p` : `Level ${i + 1}`
+        })));
+        
+        if (data.levels.length > 0 && data.levels[0].details) {
+          setVideoDuration(data.levels[0].details.totalduration);
         }
+        
+        // Start loading video
+        hls.startLoad(0);
       });
-      
-      hls.on(Hls.Events.ERROR, (event, data) => {
-        console.error('HLS error:', event, data);
-        if (data.fatal) {
-          switch (data.type) {
-            case Hls.ErrorTypes.NETWORK_ERROR:
-              console.error('Network error, trying to recover...');
-              hls.startLoad();
-              break;
-            case Hls.ErrorTypes.MEDIA_ERROR:
-              console.error('Media error, trying to recover...');
-              hls.recoverMediaError();
-              break;
-            default:
-              console.error('Fatal error, cannot recover');
-              hls.destroy();
-              break;
+
+      hls.on(Hls.Events.BUFFER_CREATED, () => {
+        console.log('Buffer created');
+      });
+
+      // Check for buffered data
+      const checkBuffered = () => {
+        if (videoElement.buffered.length > 0) {
+          const bufferedEnd = videoElement.buffered.end(0);
+          console.log('Buffered:', bufferedEnd);
+          if (bufferedEnd > 0.5) {
+            setIsVideoLoading(false);
+            setPlayerReady(true);
+            setIsPlaying(true);
+            videoElement.play().then(() => {
+              recordVideoView(); // Record view on first play
+            }).catch(() => {});
+            return true;
           }
+        }
+        return false;
+      };
+
+      // Poll for buffer
+      let attempts = 0;
+      const pollBuffer = () => {
+        if (checkBuffered()) return;
+        attempts++;
+        if (attempts < 100) {
+          setTimeout(pollBuffer, 200);
+        } else {
+          setIsVideoLoading(false);
+          console.error('Buffer timeout');
+        }
+      };
+
+      hls.on(Hls.Events.FRAG_BUFFERED, () => {
+        console.log('Fragment buffered');
+        checkBuffered();
+      });
+
+      hls.on(Hls.Events.ERROR, (event, data) => {
+        console.error('HLS error:', data);
+        if (data.fatal) {
+          setIsVideoLoading(false);
         }
       });
 
       hls.attachMedia(videoElement);
+      
+      // Start polling after a short delay
+      setTimeout(pollBuffer, 500);
+
     } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-      console.log('Native HLS support detected (Safari)');
+      // Safari native HLS
       videoElement.src = playlistUrl;
       videoElement.addEventListener('loadedmetadata', () => {
-        console.log('Native HLS loaded');
-        if (isPlaying) {
-          videoElement.play().catch(e => console.log('Auto-play failed:', e));
-        }
+        setVideoDuration(videoElement.duration);
+        setIsVideoLoading(false);
+        setPlayerReady(true);
+        setIsPlaying(true);
+        videoElement.play().then(() => {
+          recordVideoView(); // Record view for Safari
+        }).catch(() => {});
       });
-    } else {
-      console.error('HLS not supported on this browser');
+      videoElement.addEventListener('error', () => {
+        setIsVideoLoading(false);
+        console.error('Video load error');
+      });
     }
+  };
 
-    return () => {
-      if (hlsRef.current) {
-        hlsRef.current.destroy();
-        hlsRef.current = null;
-      }
-    };
-  }, [playlistUrl, isPlaying]);
-
-  // Handle play/pause
-  useEffect(() => {
-    const videoElement = videoRef.current;
-    if (!videoElement) return;
-    
-    if (isPlaying) {
-      videoElement.play().catch(() => {});
-    } else {
-      videoElement.pause();
-    }
-  }, [isPlaying]);
 
   // Fullscreen toggle
   const toggleFullscreen = () => {
@@ -409,12 +493,41 @@ export default function WatchPage() {
           {/* Main content */}
           <div className="flex-1 max-w-5xl">
             {/* Video Player */}
-            <div className="relative aspect-video bg-black rounded-2xl overflow-hidden group border border-[#27274a] shadow-2xl shadow-indigo-500/10">
+            <div 
+              className="relative aspect-video bg-black rounded-2xl overflow-hidden group border border-[#27274a] shadow-2xl shadow-indigo-500/10"
+              onMouseMove={handleMouseActivity}
+              onMouseEnter={handleMouseActivity}
+              onClick={() => {
+                if (playlistUrl) {
+                  // If already playing, pause. Otherwise play/start loading
+                  if (isPlaying && playerReady) {
+                    const videoElement = videoRef.current;
+                    if (videoElement) {
+                      videoElement.pause();
+                      setIsPlaying(false);
+                    }
+                  } else {
+                    handlePlay();
+                  }
+                }
+              }}
+            >
               <video
                 ref={videoRef}
-                className="w-full h-full"
+                className={`w-full h-full ${playerReady ? 'opacity-100' : 'opacity-0'}`}
                 poster={video.thumbnail_url || `https://via.placeholder.com/1280x720/1a1a3e/FFFFFF?text=${encodeURIComponent(video.title)}`}
-                onClick={() => setIsPlaying(!isPlaying)}
+                onClick={() => {
+                  // Direct pause/play on video click
+                  const videoElement = videoRef.current;
+                  if (!videoElement) return;
+                  
+                  if (isPlaying) {
+                    videoElement.pause();
+                    setIsPlaying(false);
+                  } else {
+                    handlePlay();
+                  }
+                }}
                 onTimeUpdate={(e) => {
                   if (!isSeeking) {
                     setCurrentTime(e.currentTarget.currentTime);
@@ -426,47 +539,78 @@ export default function WatchPage() {
                 onDurationChange={(e) => {
                   setVideoDuration(e.currentTarget.duration);
                 }}
+                onEnded={() => {
+                  setIsPlaying(false);
+                }}
                 playsInline
               />
               
-              {/* Play button overlay */}
-              {!isPlaying && (
-                <div className="absolute inset-0 flex items-center justify-center bg-[#0a0a1a]/60 backdrop-blur-sm">
+              {/* Center loading spinner - показываем пока идет загрузка */}
+              {isVideoLoading && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+                  <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+
+              {/* Play button overlay - показываем когда можно нажать play */}
+              {!isPlaying && playlistUrl && !playerReady && !isVideoLoading && (
+                <div 
+                  className="absolute inset-0 flex items-center justify-center z-20 cursor-pointer"
+                  onClick={handlePlay}
+                >
                   <button 
-                    onClick={() => setIsPlaying(true)}
-                    className="w-24 h-24 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-full flex items-center justify-center hover:from-indigo-400 hover:to-violet-500 transition-all duration-300 shadow-lg shadow-indigo-500/40 hover:shadow-indigo-500/60 hover:scale-110"
+                    onClick={(e) => { e.stopPropagation(); handlePlay(); }}
+                    className="w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg bg-gradient-to-br from-indigo-500 to-violet-600 hover:from-indigo-400 hover:to-violet-500 hover:shadow-indigo-500/60 hover:scale-110 shadow-indigo-500/40"
                   >
-                    <svg className="w-12 h-12 text-white ml-1" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-12 h-12 ml-1 text-white" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
                     </svg>
                   </button>
                 </div>
               )}
 
-              {/* Controls overlay */}
-              <div className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[#0a0a1a] via-[#0a0a1a]/80 to-transparent p-6 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
-                {/* Progress bar */}
+              {/* Pause overlay - показываем когда видео на паузе и загружено, полупрозрачная кнопка */}
+              {!isPlaying && playerReady && !isVideoLoading && (
+                <div 
+                  className={`absolute inset-0 flex items-center justify-center z-20 cursor-pointer transition-opacity duration-300 ${mouseActive ? 'opacity-100' : 'opacity-0'}`}
+                  onClick={handlePlay}
+                >
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handlePlay(); }}
+                    className="w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 bg-indigo-500/60 hover:bg-indigo-500/80 hover:scale-110"
+                  >
+                    <svg className="w-12 h-12 ml-1 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+
+              {/* Controls overlay - с анимацией скрытия вниз */}
+              <div className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[#0a0a1a] via-[#0a0a1a]/80 to-transparent p-6 z-30 transition-transform duration-300 ease-out ${mouseActive || !isPlaying ? 'translate-y-0' : 'translate-y-full'}`}>
+                {/* Progress bar - неактивна пока грузится */}
                 <div 
                   ref={progressRef}
-                  className="w-full h-1.5 bg-[#27274a] rounded-full cursor-pointer mb-4 group/progress"
-                  onMouseDown={handleProgressMouseDown}
-                  onMouseMove={handleProgressMouseMove}
-                  onMouseUp={handleProgressMouseUp}
-                  onMouseLeave={handleProgressMouseUp}
+                  className={`w-full h-1.5 bg-[#27274a] rounded-full mb-4 ${playerReady ? 'cursor-pointer group/progress' : 'cursor-not-allowed'}`}
+                  onMouseDown={playerReady ? handleProgressMouseDown : undefined}
+                  onMouseMove={playerReady ? handleProgressMouseMove : undefined}
+                  onMouseUp={playerReady ? handleProgressMouseUp : undefined}
+                  onMouseLeave={playerReady ? handleProgressMouseUp : undefined}
                 >
                   <div 
                     className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full relative"
                     style={{ width: `${(currentTime / (videoDuration || 1)) * 100}%` }}
                   >
-                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover/progress:opacity-100 transition-opacity" />
+                    <div className={`absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full transition-opacity ${playerReady ? 'opacity-0 group-hover/progress:opacity-100' : 'opacity-0'}`} />
                   </div>
                 </div>
                 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <button 
-                      onClick={() => setIsPlaying(!isPlaying)}
-                      className="hover:bg-white/10 rounded-full p-2 transition-colors"
+                      onClick={handlePlay}
+                      disabled={!playlistUrl || isVideoLoading}
+                      className="hover:bg-white/10 rounded-full p-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isPlaying ? (
                         <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">

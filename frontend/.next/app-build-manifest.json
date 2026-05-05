@@ -1,9 +1,9 @@
 {
   "pages": {
-    "/page": [
+    "/channel/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/page.js"
+      "static/chunks/app/channel/page.js"
     ],
     "/layout": [
       "static/chunks/webpack.js",
@@ -11,15 +11,25 @@
       "static/css/app/layout.css",
       "static/chunks/app/layout.js"
     ],
-    "/login/page": [
+    "/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/login/page.js"
+      "static/chunks/app/page.js"
     ],
     "/watch/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/watch/page.js"
+    ],
+    "/subscriptions/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/subscriptions/page.js"
+    ],
+    "/login/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/login/page.js"
     ],
     "/channel/[handle]/page": [
       "static/chunks/webpack.js",
@@ -30,6 +40,11 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/upload/page.js"
+    ],
+    "/go-live/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/go-live/page.js"
     ],
     "/history/page": [
       "static/chunks/webpack.js",
@@ -46,15 +61,15 @@
       "static/chunks/main-app.js",
       "static/chunks/app/liked/page.js"
     ],
-    "/search/page": [
+    "/create-channel/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/search/page.js"
+      "static/chunks/app/create-channel/page.js"
     ],
-    "/go-live/page": [
+    "/register/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/go-live/page.js"
+      "static/chunks/app/register/page.js"
     ]
   }
 }

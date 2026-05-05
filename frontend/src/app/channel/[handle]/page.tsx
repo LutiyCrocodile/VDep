@@ -31,6 +31,9 @@ interface Video {
   views_count: number;
   created_at: string;
   status?: string;
+  user_id?: string;
+  owner_username?: string;
+  channel_id?: string;
 }
 
 export default function PublicChannelPage() {
@@ -74,7 +77,12 @@ export default function PublicChannelPage() {
         try {
           const videosData = await channelsAPI.getChannelVideos(channelData.id);
           console.log('Channel videos:', videosData);
-          setVideos(videosData || []);
+          // Add channel name as owner_username for each video
+          const videosWithChannel = (videosData || []).map((v: Video) => ({
+            ...v,
+            owner_username: channelData.name
+          }));
+          setVideos(videosWithChannel);
         } catch (err) {
           console.log('Could not fetch videos:', err);
           setVideos([]);

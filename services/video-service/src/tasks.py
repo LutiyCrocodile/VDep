@@ -126,12 +126,16 @@ def transcode_video(self, video_id: str, minio_key: str):
                 playlist_path = os.path.join(quality_dir, "playlist.m3u8")
                 segment_pattern = os.path.join(quality_dir, "segment_%03d.ts")
 
-                # FFmpeg command for transcoding
+                # FFmpeg command for CPU transcoding (NVENC not available in Docker Desktop)
+                bitrate = get_bitrate_for_quality(quality)
                 cmd = [
                     "ffmpeg",
                     "-i", local_video_path,
-                    "-vf", f"{get_scale_filter(quality)},drawtext=text='DGI':fontsize=24:fontcolor=white:box=1:boxcolor=black@0.5:x=(w-text_w)/2:y=h-text_h-10",
+                    "-vf", get_scale_filter(quality),
                     "-c:v", "libx264",
+                    "-b:v", bitrate,
+                    "-preset", "ultrafast",
+                    "-tune", "fastdecode",
                     "-c:a", "aac",
                     "-b:a", "128k",
                     "-ac", "2",
@@ -143,11 +147,6 @@ def transcode_video(self, video_id: str, minio_key: str):
                     "-y",
                     playlist_path
                 ]
-
-                # Add quality-specific bitrate
-                bitrate = get_bitrate_for_quality(quality)
-                cmd.insert(-1, "-b:v")
-                cmd.insert(-1, bitrate)
 
                 result = subprocess.run(cmd, capture_output=True, text=True, cwd=temp_dir)
                 if result.returncode != 0:
