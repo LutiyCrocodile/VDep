@@ -231,6 +231,80 @@ class Subscription(Base):
         rows = result.fetchall()
         return rows
 
+class Classification(Base):
+    __tablename__ = "classifications"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(100), nullable=False)
+    level = Column(Integer, nullable=False, default=1)
+    description = Column(String)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+    @classmethod
+    async def get_all(cls, db: AsyncSession):
+        result = await db.execute(text("SELECT * FROM classifications ORDER BY level"))
+        rows = result.fetchall()
+        return [cls(**row._asdict()) for row in rows]
+
+    @classmethod
+    async def get_by_id(cls, db: AsyncSession, classification_id: str):
+        result = await db.execute(
+            text("SELECT * FROM classifications WHERE id = :id"),
+            {"id": classification_id}
+        )
+        row = result.first()
+        if row:
+            return cls(**row._asdict())
+        return None
+
+class UserClearance(Base):
+    __tablename__ = "user_clearances"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), nullable=False)
+    classification_id = Column(UUID(as_uuid=True), ForeignKey("classifications.id"))
+    granted_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+    @classmethod
+    async def has_clearance(cls, db: AsyncSession, user_id: str, classification_id: str):
+        result = await db.execute(
+            text("""
+                SELECT id FROM user_clearances 
+                WHERE user_id = :user_id AND classification_id = :classification_id
+                LIMIT 1
+            """),
+            {"user_id": user_id, "classification_id": classification_id}
+        )
+        return result.first() is not None
+
+    @classmethod
+    async def get_user_clearances(cls, db: AsyncSession, user_id: str):
+        result = await db.execute(
+            text("""
+                SELECT c.* FROM classifications c
+                JOIN user_clearances uc ON c.id = uc.classification_id
+                WHERE uc.user_id = :user_id
+                ORDER BY c.level
+            """),
+            {"user_id": user_id}
+        )
+        rows = result.fetchall()
+        return [Classification(**row._asdict()) for row in rows]
+
+    @classmethod
+    async def get_user_max_level(cls, db: AsyncSession, user_id: str):
+        result = await db.execute(
+            text("""
+                SELECT MAX(c.level) as max_level 
+                FROM classifications c
+                JOIN user_clearances uc ON c.id = uc.classification_id
+                WHERE uc.user_id = :user_id
+            """),
+            {"user_id": user_id}
+        )
+        row = result.first()
+        return row.max_level if row and row.max_level else 0
+
 class Video(Base):
     __tablename__ = "videos"
 
@@ -250,6 +324,9 @@ class Video(Base):
     is_private = Column(Boolean, default=False)
     tags = Column(ARRAY(String))
     views_count = Column(Integer, default=0)
+    transcoding_progress = Column(Integer, default=0)  # 0-100%
+    classification = Column(String(20), default="public")  # public, internal, confidential, restricted
+    classification_id = Column(UUID(as_uuid=True), ForeignKey("classifications.id"))
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
@@ -263,8 +340,8 @@ class Video(Base):
         
         await db.execute(
             text("""
-                INSERT INTO videos (id, title, description, user_id, channel_id, duration, resolution, bitrate, file_size, minio_key, hls_playlist_url, status, is_private, tags, created_at, updated_at)
-                VALUES (:id, :title, :description, :user_id, :channel_id, :duration, :resolution, :bitrate, :file_size, :minio_key, :hls_playlist_url, :status, :is_private, :tags, :created_at, :updated_at)
+                INSERT INTO videos (id, title, description, user_id, channel_id, duration, resolution, bitrate, file_size, minio_key, hls_playlist_url, status, is_private, tags, classification, created_at, updated_at)
+                VALUES (:id, :title, :description, :user_id, :channel_id, :duration, :resolution, :bitrate, :file_size, :minio_key, :hls_playlist_url, :status, :is_private, :tags, :classification, :created_at, :updated_at)
             """),
             {
                 "id": video_id_str,
@@ -281,6 +358,7 @@ class Video(Base):
                 "status": kwargs.get('status', 'uploaded'),
                 "is_private": kwargs.get('is_private', False),
                 "tags": kwargs.get('tags', []),
+                "classification": kwargs.get('classification', 'public'),
                 "created_at": kwargs.get('created_at', datetime.utcnow()),
                 "updated_at": kwargs.get('updated_at', datetime.utcnow())
             }
@@ -321,9 +399,10 @@ class Video(Base):
     async def get_all(cls, db: AsyncSession, skip: int = 0, limit: int = 10, user_id: str = None, channel_id: str = None):
         # Only show ready videos that are processed and available for viewing
         if channel_id:
+            # Show all public videos for channel (including uploading/transcoding)
             query = """
                 SELECT * FROM videos
-                WHERE channel_id = :channel_id AND is_private = false AND status = 'ready'
+                WHERE channel_id = :channel_id AND is_private = false
                 ORDER BY created_at DESC
                 LIMIT :limit OFFSET :skip
             """
@@ -371,7 +450,7 @@ class Video(Base):
         update_fields = []
         params = {"id": video_id}
 
-        for field in ['duration', 'resolution', 'bitrate', 'hls_playlist_url', 'status', 'channel_id']:
+        for field in ['duration', 'resolution', 'bitrate', 'hls_playlist_url', 'status', 'channel_id', 'transcoding_progress', 'classification_id']:
             if field in kwargs:
                 update_fields.append(f"{field} = :{field}")
                 params[field] = kwargs[field]
@@ -381,6 +460,62 @@ class Video(Base):
             query = f"UPDATE videos SET {', '.join(update_fields)} WHERE id = :id"
             await db.execute(text(query), params)
             await db.commit()
+
+class VideoUserAccess(Base):
+    __tablename__ = "video_user_access"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    video_id = Column(UUID(as_uuid=True), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), nullable=False)
+    granted_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    granted_by = Column(UUID(as_uuid=True))
+
+    @classmethod
+    async def grant_access(cls, db: AsyncSession, video_id: str, user_id: str, granted_by: str):
+        """Grant access to a specific user for a video"""
+        try:
+            await db.execute(
+                text("""
+                    INSERT INTO video_user_access (id, video_id, user_id, granted_at, granted_by)
+                    VALUES (gen_random_uuid(), :video_id, :user_id, NOW(), :granted_by)
+                    ON CONFLICT (video_id, user_id) DO NOTHING
+                """),
+                {"video_id": video_id, "user_id": user_id, "granted_by": granted_by}
+            )
+            await db.commit()
+            return True
+        except Exception as e:
+            await db.rollback()
+            logger.error(f"Failed to grant access: {e}")
+            return False
+
+    @classmethod
+    async def revoke_access(cls, db: AsyncSession, video_id: str, user_id: str):
+        """Revoke access from a user for a video"""
+        await db.execute(
+            text("DELETE FROM video_user_access WHERE video_id = :video_id AND user_id = :user_id"),
+            {"video_id": video_id, "user_id": user_id}
+        )
+        await db.commit()
+
+    @classmethod
+    async def check_access(cls, db: AsyncSession, video_id: str, user_id: str) -> bool:
+        """Check if user has access to the video"""
+        result = await db.execute(
+            text("SELECT id FROM video_user_access WHERE video_id = :video_id AND user_id = :user_id LIMIT 1"),
+            {"video_id": video_id, "user_id": user_id}
+        )
+        return result.first() is not None
+
+    @classmethod
+    async def get_allowed_users(cls, db: AsyncSession, video_id: str):
+        """Get list of users with access to the video"""
+        result = await db.execute(
+            text("SELECT user_id, granted_at FROM video_user_access WHERE video_id = :video_id"),
+            {"video_id": video_id}
+        )
+        rows = result.fetchall()
+        return [{"user_id": str(row.user_id), "granted_at": row.granted_at} for row in rows]
 
 # Database engine
 engine = create_async_engine(

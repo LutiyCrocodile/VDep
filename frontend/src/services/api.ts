@@ -156,7 +156,7 @@ export const videosAPI = {
     return response.data;
   },
   
-  uploadVideo: async (file: File, metadata: { title: string; description?: string; channelId?: string }, onProgress?: (progress: number) => void) => {
+  uploadVideo: async (file: File, metadata: { title: string; description?: string; channelId?: string; classification?: string }, onProgress?: (progress: number) => void) => {
     try {
       // Step 1: Initialize upload
       const initFormData = new FormData();
@@ -166,6 +166,7 @@ export const videosAPI = {
       initFormData.append('file_size', file.size.toString());
       initFormData.append('is_private', 'false');
       initFormData.append('tags', '[]');
+      initFormData.append('classification', metadata.classification || 'public');
       
       console.log('[Upload] Step 1: Initializing upload...', metadata.title);
       
@@ -226,7 +227,28 @@ export const videosAPI = {
     const response = await videoApiClient.delete(`/videos/${videoId}`);
     return response.data;
   },
-  
+
+  publishVideo: async (videoId: string) => {
+    const response = await videoApiClient.post(`/videos/${videoId}/publish`);
+    return response.data;
+  },
+
+  // Personal video access management
+  grantVideoAccess: async (videoId: string, targetUserId: string) => {
+    const response = await videoApiClient.post(`/videos/${videoId}/access?target_user_id=${targetUserId}`);
+    return response.data;
+  },
+
+  revokeVideoAccess: async (videoId: string, targetUserId: string) => {
+    const response = await videoApiClient.delete(`/videos/${videoId}/access/${targetUserId}`);
+    return response.data;
+  },
+
+  getVideoAccessList: async (videoId: string) => {
+    const response = await videoApiClient.get(`/videos/${videoId}/access`);
+    return response.data;
+  },
+
   getVideoUrl: (videoId: string) => {
     return `${VIDEO_API_URL}/videos/${videoId}/playlist.m3u8`;
   },
@@ -258,7 +280,20 @@ export const videosAPI = {
   },
   
   recordView: async (videoId: string) => {
-    const response = await videoApiClient.post(`/videos/${videoId}/views`);
+    // Get or create session ID for anonymous tracking
+    let sessionId = null;
+    if (typeof window !== 'undefined') {
+      sessionId = localStorage.getItem('anonymous_session_id');
+      if (!sessionId) {
+        // Generate new session ID
+        sessionId = 'anon_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        localStorage.setItem('anonymous_session_id', sessionId);
+      }
+    }
+    
+    const response = await videoApiClient.post(`/videos/${videoId}/views`, {
+      session_id: sessionId
+    });
     return response.data;
   },
   

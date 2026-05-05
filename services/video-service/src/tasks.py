@@ -67,6 +67,19 @@ def update_video_status(video_id, status, hls_url=None):
     finally:
         conn.close()
 
+def update_video_progress(video_id, progress):
+    """Update video transcoding progress"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE videos SET transcoding_progress = %s WHERE id = %s",
+            (progress, video_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
 # MinIO client
 minio_client = Minio(
     settings.minio_endpoint,
@@ -83,6 +96,11 @@ def transcode_video(self, video_id: str, minio_key: str):
     logger.info(f"Starting transcoding for video {video_id}")
 
     try:
+        # Update status to transcoding immediately
+        update_video_status(video_id, 'transcoding')
+        update_video_progress(video_id, 0)
+        self.update_state(state='PROGRESS', meta={'percent': 0})
+
         # Create temporary directory
         with tempfile.TemporaryDirectory() as temp_dir:
             # Download video from MinIO
@@ -117,10 +135,16 @@ def transcode_video(self, video_id: str, minio_key: str):
             master_playlist_content = "#EXTM3U\n#EXT-X-VERSION:3\n"
             qualities = settings.transcoding_qualities
 
-            for quality in qualities:
+            total_qualities = len(qualities)
+            for idx, quality in enumerate(qualities):
                 logger.info(f"Transcoding to {quality}")
                 quality_dir = os.path.join(hls_dir, quality)
                 os.makedirs(quality_dir)
+
+                # Update progress: each quality step
+                progress = int(((idx) / total_qualities) * 90)  # Up to 90% during transcoding
+                update_video_progress(video_id, progress)
+                self.update_state(state='PROGRESS', meta={'current': idx, 'total': total_qualities, 'percent': progress})
 
                 # Generate HLS playlist for this quality
                 playlist_path = os.path.join(quality_dir, "playlist.m3u8")
@@ -166,6 +190,10 @@ def transcode_video(self, video_id: str, minio_key: str):
 
             # Upload all HLS files to MinIO
             upload_hls_to_minio(hls_dir, video_id)
+
+            # Update progress to 100%
+            update_video_progress(video_id, 100)
+            self.update_state(state='PROGRESS', meta={'percent': 100})
 
             # Generate HLS playlist URL (using nginx proxy to MinIO)
             hls_url = f"/videos/{video_id}/hls/master.m3u8"

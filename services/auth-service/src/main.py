@@ -331,6 +331,37 @@ async def list_users(
         for row in rows
     ]
 
+@app.get("/users/search")
+async def search_users(
+    q: str,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Search users by username or email"""
+    search_pattern = f"%{q}%"
+    result = await db.execute(
+        text("""
+            SELECT id, username, email, is_active 
+            FROM users 
+            WHERE (username ILIKE :pattern OR email ILIKE :pattern)
+            AND is_active = true
+            LIMIT 10
+        """),
+        {"pattern": search_pattern}
+    )
+    rows = result.fetchall()
+    return {
+        "users": [
+            {
+                "id": str(row.id),
+                "username": row.username,
+                "email": row.email,
+                "is_active": row.is_active
+            }
+            for row in rows
+        ]
+    }
+
 @app.post("/logout")
 async def logout(response: dict):
     # In a real implementation, you might want to invalidate the token

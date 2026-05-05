@@ -18,16 +18,23 @@ interface Video {
   owner_username?: string;
   status?: string;
   category?: string;
+  classification?: string;
 }
 
-const CATEGORIES = ['Все', 'Совещания', 'Обучение', 'Проекты', 'Новости', 'Прямые трансляции'];
+const CLASSIFICATION_FILTERS = [
+  { value: 'all', label: 'Все', color: 'bg-gray-600' },
+  { value: 'public', label: 'Публичные', color: 'bg-green-600' },
+  { value: 'internal', label: 'Внутренние', color: 'bg-blue-600' },
+  { value: 'confidential', label: 'Конфиденциальные', color: 'bg-yellow-600' },
+  { value: 'restricted', label: 'Личные', color: 'bg-red-600' },
+];
 
 export default function Home() {
   const [videos, setVideos] = useState<Video[]>([]);
   const [filteredVideos, setFilteredVideos] = useState<Video[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
-  const [activeCategory, setActiveCategory] = useState('Все');
+  const [activeClassification, setActiveClassification] = useState('all');
 
   useEffect(() => {
     const fetchVideos = async () => {
@@ -103,14 +110,18 @@ export default function Home() {
     fetchVideos();
   }, []);
 
-  // Filter videos by category
+  // Filter videos - only ready videos on home page, then by classification
   useEffect(() => {
-    if (activeCategory === 'Все') {
-      setFilteredVideos(videos);
-    } else {
-      setFilteredVideos(videos.filter(v => v.category === activeCategory));
+    // First filter: only ready videos (exclude uploading/transcoding videos)
+    let result = videos.filter(v => v.status === 'ready');
+    
+    // Second filter: by classification
+    if (activeClassification !== 'all') {
+      result = result.filter(v => v.classification === activeClassification);
     }
-  }, [activeCategory, videos]);
+    
+    setFilteredVideos(result);
+  }, [activeClassification, videos]);
 
   return (
     <div className="min-h-screen bg-[#0f0f0f]">
@@ -119,19 +130,22 @@ export default function Home() {
       
       <main className="ml-64 pt-14 min-h-screen bg-[#0f0f0f]">
         <div className="p-6">
-          {/* Categories */}
-          <div className="flex gap-3 mb-6 overflow-x-auto pb-2">
-            {CATEGORIES.map((cat) => (
+          {/* Classification Filters */}
+          <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+            {CLASSIFICATION_FILTERS.map((filter) => (
               <button
-                key={cat}
-                onClick={() => setActiveCategory(cat)}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                  activeCategory === cat
-                    ? 'bg-white text-black'
-                    : 'bg-[#272727] text-white hover:bg-[#3f3f3f]'
+                key={filter.value}
+                onClick={() => setActiveClassification(filter.value)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all flex items-center gap-2 ${
+                  activeClassification === filter.value
+                    ? `${filter.color} text-white shadow-lg`
+                    : 'bg-[#272727] text-gray-300 hover:bg-[#3f3f3f]'
                 }`}
               >
-                {cat}
+                {activeClassification === filter.value && (
+                  <span className="w-2 h-2 bg-white rounded-full" />
+                )}
+                {filter.label}
               </button>
             ))}
           </div>

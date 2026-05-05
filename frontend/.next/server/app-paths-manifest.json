@@ -3,5 +3,6 @@
   "/watch/page": "app/watch/page.js",
   "/channel/[handle]/page": "app/channel/[handle]/page.js",
   "/login/page": "app/login/page.js",
-  "/upload/page": "app/upload/page.js"
+  "/upload/page": "app/upload/page.js",
+  "/register/page": "app/register/page.js"
 }

@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Header from '@/components/layout/Header';
 import Sidebar from '@/components/layout/Sidebar';
 import VideoCard from '@/components/video/VideoCard';
-import { channelsAPI } from '@/services/api';
+import { channelsAPI, videosAPI } from '@/services/api';
 import { useAuth } from '@/services/auth-context';
 import Link from 'next/link';
 
@@ -28,7 +28,7 @@ interface Video {
   description?: string;
   thumbnail_url?: string;
   duration?: number;
-  views_count: number;
+  views_count?: number;
   created_at: string;
   status?: string;
   user_id?: string;
@@ -47,6 +47,8 @@ export default function PublicChannelPage() {
   const [error, setError] = useState('');
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isOwnChannel, setIsOwnChannel] = useState(false);
+  const [videoToDelete, setVideoToDelete] = useState<Video | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const fetchChannel = async () => {
@@ -116,6 +118,23 @@ export default function PublicChannelPage() {
       }
     } catch (err) {
       console.error('Subscription error:', err);
+    }
+  };
+
+  const handleDeleteVideo = async () => {
+    if (!videoToDelete || !isOwnChannel) return;
+    
+    setIsDeleting(true);
+    try {
+      await videosAPI.deleteVideo(videoToDelete.id);
+      // Remove video from list
+      setVideos(prev => prev.filter(v => v.id !== videoToDelete.id));
+      setVideoToDelete(null);
+    } catch (err) {
+      console.error('Failed to delete video:', err);
+      alert('Не удалось удалить видео');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -232,7 +251,20 @@ export default function PublicChannelPage() {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {videos.map((video) => (
-                    <VideoCard key={video.id} video={video} />
+                    <div key={video.id} className="relative group">
+                      <VideoCard video={video} />
+                      {isOwnChannel && (
+                        <button
+                          onClick={() => setVideoToDelete(video)}
+                          className="absolute top-2 right-2 z-10 bg-red-600/90 hover:bg-red-700 text-white p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-lg"
+                          title="Удалить видео"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
@@ -240,6 +272,37 @@ export default function PublicChannelPage() {
           </div>
         </div>
       </main>
+
+      {/* Delete Confirmation Modal */}
+      {videoToDelete && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1a1a3e] border border-[#4f46e5]/30 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+            <h3 className="text-xl font-bold text-white mb-4">Удалить видео?</h3>
+            <p className="text-zinc-400 mb-6">
+              Вы уверены, что хотите удалить видео &quot;{videoToDelete.title}&quot;? Это действие нельзя отменить.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setVideoToDelete(null)}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-white transition-colors disabled:opacity-50"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={handleDeleteVideo}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {isDeleting && (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                )}
+                {isDeleting ? 'Удаление...' : 'Удалить'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -15,7 +15,7 @@ interface Video {
   description?: string;
   thumbnail_url?: string;
   duration?: number;
-  views_count: number;
+  views_count?: number;
   created_at: string;
   user_id?: string;
   owner_username?: string;
@@ -82,11 +82,17 @@ export default function WatchPage() {
   // Record view when video starts playing
   const recordVideoView = async () => {
     if (!videoId || viewRecordedRef.current) return;
-    
+
     try {
-      await videosAPI.recordView(videoId);
+      const response = await videosAPI.recordView(videoId);
       viewRecordedRef.current = true;
-      console.log('View recorded for video:', videoId);
+      // Increment views count locally only if it's a new view
+      if (!response.already_viewed) {
+        setVideo(prev => prev ? { ...prev, views_count: (prev.views_count || 0) + 1 } : null);
+        console.log('New view recorded for video:', videoId);
+      } else {
+        console.log('View already recorded for this user');
+      }
     } catch (err) {
       console.error('Failed to record view:', err);
     }
@@ -372,8 +378,10 @@ export default function WatchPage() {
       
       try {
         const data = await videosAPI.getVideo(videoId);
+        console.log('Video data received:', data);
+        console.log('Views count:', data.views_count, typeof data.views_count);
         setVideo(data);
-        
+
         // Fetch likes
         const likesData = await videosAPI.getVideoLikes(videoId);
         setLikesCount(likesData.likes_count);
@@ -443,10 +451,11 @@ export default function WatchPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const formatViews = (count: number) => {
-    if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
-    if (count >= 1000) return `${(count / 1000).toFixed(1)}K`;
-    return count.toString();
+  const formatViews = (count: number | undefined | null) => {
+    const num = Number(count) || 0;
+    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
+    if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
+    return num.toString();
   };
 
   const formatDate = (dateString: string) => {
