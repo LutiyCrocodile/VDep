@@ -51,6 +51,50 @@ class Permission(Base):
     description = Column(String)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
+# Multi-service architecture models
+class Service(Base):
+    __tablename__ = "services"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    slug = Column(String(50), unique=True, nullable=False)  # 'video', 'messenger', etc.
+    name = Column(String(100), nullable=False)  # 'Видеохостинг ДГИ'
+    description = Column(String)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+class ServiceRole(Base):
+    __tablename__ = "service_roles"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    service_id = Column(UUID(as_uuid=True), ForeignKey("services.id"), nullable=False)
+    name = Column(String(50), nullable=False)  # 'admin', 'user', 'viewer'
+    description = Column(String)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+class ServicePermission(Base):
+    __tablename__ = "service_permissions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    service_id = Column(UUID(as_uuid=True), ForeignKey("services.id"), nullable=False)
+    name = Column(String(100), nullable=False)  # 'video:upload', 'messenger:delete'
+    description = Column(String)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+class ServiceRolePermission(Base):
+    __tablename__ = "service_role_permissions"
+
+    role_id = Column(UUID(as_uuid=True), ForeignKey("service_roles.id"), primary_key=True)
+    permission_id = Column(UUID(as_uuid=True), ForeignKey("service_permissions.id"), primary_key=True)
+
+class UserServiceRole(Base):
+    __tablename__ = "user_service_roles"
+
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True)
+    service_role_id = Column(UUID(as_uuid=True), ForeignKey("service_roles.id"), primary_key=True)
+    granted_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    granted_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
 class User(Base):
     __tablename__ = "users"
 
@@ -111,6 +155,36 @@ class User(Base):
 
         # Fetch the created user with role
         return await cls.get_by_username(db, kwargs['username'])
+
+    async def get_service_permissions(self, db: AsyncSession) -> dict:
+        """Get all service-specific roles and permissions for the user"""
+        result = await db.execute(
+            text("""
+                SELECT 
+                    s.slug as service_slug,
+                    s.name as service_name,
+                    sr.name as role_name,
+                    array_agg(sp.name) as permissions
+                FROM user_service_roles usr
+                JOIN service_roles sr ON usr.service_role_id = sr.id
+                JOIN services s ON sr.service_id = s.id
+                LEFT JOIN service_role_permissions srp ON sr.id = srp.role_id
+                LEFT JOIN service_permissions sp ON srp.permission_id = sp.id
+                WHERE usr.user_id = :user_id AND s.is_active = true AND sr.is_active = true
+                GROUP BY s.slug, s.name, sr.name
+            """),
+            {"user_id": str(self.id)}
+        )
+        
+        services = {}
+        for row in result.fetchall():
+            service_slug = row.service_slug
+            if service_slug not in services:
+                services[service_slug] = {
+                    "role": row.role_name,
+                    "perms": [p for p in (row.permissions or []) if p is not None]
+                }
+        return services
 
 # Database engine
 engine = create_async_engine(

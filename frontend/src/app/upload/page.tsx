@@ -25,9 +25,9 @@ export default function UploadPage() {
   const [isPublished, setIsPublished] = useState(false);
   
   // For restricted (personal) videos - user access management
-  const [selectedUsers, setSelectedUsers] = useState<Array<{id: string, username: string}>>([]);
+  const [selectedUsers, setSelectedUsers] = useState<Array<{id: string, username: string, full_name?: string}>>([]);
   const [userSearchQuery, setUserSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Array<{id: string, username: string}>>([]);
+  const [searchResults, setSearchResults] = useState<Array<{id: string, username: string, full_name?: string}>>([]);
   const [isSearching, setIsSearching] = useState(false);
 
   const CLASSIFICATION_OPTIONS = [
@@ -191,6 +191,7 @@ export default function UploadPage() {
 
   // Search users for personal video access
   const searchUsers = async (query: string) => {
+    console.log('searchUsers called with query:', query);
     if (!query || query.length < 2) {
       setSearchResults([]);
       return;
@@ -198,20 +199,39 @@ export default function UploadPage() {
     
     setIsSearching(true);
     try {
+      const token = localStorage.getItem('token');
+      console.log('Using token:', token ? 'present' : 'missing');
+      
       // Use auth service to search users
-      const response = await fetch(`http://localhost:8000/api/v1/users/search?q=${encodeURIComponent(query)}`, {
+      const apiUrl = process.env.NEXT_PUBLIC_AUTH_API_URL || 'http://localhost:8000';
+      const url = `${apiUrl}/api/v1/users/search?q=${encodeURIComponent(query)}`;
+      console.log('Fetching from:', url);
+      
+      const response = await fetch(url, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
       });
       
+      console.log('Response status:', response.status);
+      
       if (response.ok) {
         const data = await response.json();
+        console.log('Search results:', data);
         // Filter out already selected users
         const filtered = data.users?.filter((u: any) => 
           !selectedUsers.find(su => su.id === u.id)
         ) || [];
-        setSearchResults(filtered.map((u: any) => ({ id: u.id, username: u.username || u.email })));
+        console.log('Filtered results:', filtered);
+        setSearchResults(filtered.map((u: any) => ({ 
+          id: u.id, 
+          username: u.username || u.email,
+          full_name: u.full_name 
+        })));
+      } else {
+        const errorText = await response.text();
+        console.error('Search failed:', response.status, errorText);
       }
     } catch (err) {
       console.error('Failed to search users:', err);
@@ -220,7 +240,7 @@ export default function UploadPage() {
     }
   };
 
-  const addUser = (user: {id: string, username: string}) => {
+  const addUser = (user: {id: string, username: string, full_name?: string}) => {
     if (!selectedUsers.find(u => u.id === user.id)) {
       setSelectedUsers([...selectedUsers, user]);
     }
@@ -231,6 +251,20 @@ export default function UploadPage() {
   const removeUser = (userId: string) => {
     setSelectedUsers(selectedUsers.filter(u => u.id !== userId));
   };
+
+  // Debounced search effect
+  useEffect(() => {
+    if (!userSearchQuery || userSearchQuery.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      searchUsers(userSearchQuery);
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [userSearchQuery]);
 
   if (!user) {
     return (
@@ -406,11 +440,8 @@ export default function UploadPage() {
                   <input
                     type="text"
                     value={userSearchQuery}
-                    onChange={(e) => {
-                      setUserSearchQuery(e.target.value);
-                      searchUsers(e.target.value);
-                    }}
-                    placeholder="Введите имя пользователя для поиска..."
+                    onChange={(e) => setUserSearchQuery(e.target.value)}
+                    placeholder="Введите имя или username для поиска..."
                     className="w-full px-4 py-2 bg-[#0a0a1a]/50 border border-red-500/30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/50"
                   />
                   {isSearching && (
@@ -418,22 +449,42 @@ export default function UploadPage() {
                   )}
                 </div>
 
+                {/* Hint for min chars */}
+                {userSearchQuery.length > 0 && userSearchQuery.length < 2 && !isSearching && (
+                  <p className="text-gray-500 text-xs mt-1">Введите минимум 2 символа для поиска</p>
+                )}
+
                 {/* Search results */}
                 {searchResults.length > 0 && (
-                  <div className="bg-[#0a0a1a]/80 border border-red-500/20 rounded-lg mb-3 max-h-32 overflow-y-auto">
+                  <div className="bg-[#0a0a1a]/80 border border-red-500/20 rounded-lg mb-3 max-h-40 overflow-y-auto">
                     {searchResults.map((user) => (
                       <button
                         key={user.id}
                         onClick={() => addUser(user)}
-                        className="w-full text-left px-3 py-2 hover:bg-red-500/20 text-white text-sm transition-colors flex items-center gap-2"
+                        className="w-full text-left px-3 py-2 hover:bg-red-500/20 text-white text-sm transition-colors flex items-center justify-between"
                       >
-                        <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                        <div className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                          </svg>
+                          <div>
+                            <p className="font-medium">{user.full_name || user.username}</p>
+                            {user.full_name && (
+                              <p className="text-xs text-gray-400">@{user.username}</p>
+                            )}
+                          </div>
+                        </div>
+                        <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                         </svg>
-                        {user.username}
                       </button>
                     ))}
                   </div>
+                )}
+
+                {/* No results message */}
+                {userSearchQuery.length >= 2 && searchResults.length === 0 && !isSearching && (
+                  <p className="text-gray-500 text-xs mt-1">Пользователи не найдены</p>
                 )}
 
                 {/* Selected users */}
@@ -444,12 +495,13 @@ export default function UploadPage() {
                       {selectedUsers.map((user) => (
                         <span
                           key={user.id}
-                          className="inline-flex items-center gap-1 px-2 py-1 bg-red-500/30 text-red-200 text-xs rounded-full"
+                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-red-500/30 text-red-200 text-xs rounded-full"
+                          title={`@${user.username}`}
                         >
-                          {user.username}
+                          <span className="font-medium">{user.full_name || user.username}</span>
                           <button
                             onClick={() => removeUser(user.id)}
-                            className="hover:text-red-400"
+                            className="hover:text-red-400 ml-1"
                           >
                             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

@@ -467,7 +467,7 @@ async def check_private_video_permission(viewer_id: str, owner_id: str) -> bool:
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(
-                f"{settings.auth_service_url}/users/{viewer_id}/permissions",
+                f"{settings.auth_service_url}/internal/users/{viewer_id}/permissions",
                 headers={"Authorization": f"Bearer {settings.internal_auth_token}"}
             )
             if response.status_code == 200:

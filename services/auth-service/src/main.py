@@ -13,7 +13,7 @@ from jose import JWTError, jwt
 import bcrypt
 import logging
 
-from .database import get_db, create_tables, User, Role, Permission
+from .database import get_db, create_tables, async_session, User, Role, Permission, Service, ServiceRole, ServicePermission, ServiceRolePermission, UserServiceRole
 from .config import settings
 
 # Configure logging
@@ -60,11 +60,42 @@ class UserResponse(BaseModel):
     role: str
     is_active: bool
 
+async def initialize_services(db: AsyncSession):
+    """Initialize default services for multi-service architecture"""
+    from sqlalchemy import text
+    
+    services = [
+        {"slug": "video", "name": "Видеохостинг ДГИ", "description": "Система видеохостинга"},
+        {"slug": "messenger", "name": "Мессенджер ДГИ", "description": "Корпоративный мессенджер"},
+        {"slug": "dashboard", "name": "Дашборд ДГИ", "description": "Аналитический дашборд"},
+        {"slug": "support", "name": "Техподдержка ДГИ", "description": "Система техподдержки"},
+    ]
+    
+    for svc in services:
+        # Check if service exists
+        result = await db.execute(
+            text("SELECT id FROM services WHERE slug = :slug"),
+            {"slug": svc["slug"]}
+        )
+        if not result.first():
+            await db.execute(
+                text("INSERT INTO services (id, slug, name, description, is_active) VALUES (gen_random_uuid(), :slug, :name, :description, true)"),
+                svc
+            )
+            logger.info(f"Created service: {svc['name']}")
+    await db.commit()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     await create_tables()
-    logger.info("Auth service started")
+    
+    # Initialize services
+    async with async_session() as db:
+        await initialize_services(db)
+    
+    logger.info(f"Auth service started in {settings.auth_mode} mode")
+    logger.info(f"Service ID: {settings.service_id}")
     yield
     # Shutdown
     logger.info("Auth service shutting down")
@@ -90,13 +121,22 @@ def get_password_hash(password: str) -> str:
     hashed = bcrypt.hashpw(password_bytes, salt)
     return hashed.decode('utf-8')
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+async def create_access_token(data: dict, db: AsyncSession, expires_delta: Optional[timedelta] = None):
+    """Create JWT with service-specific permissions"""
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
         expire = datetime.utcnow() + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire, "type": "access"})
+    
+    # Add service permissions if user_id present
+    if "sub" in to_encode:
+        user = await User.get_by_username(db, to_encode["sub"])
+        if user:
+            services = await user.get_service_permissions(db)
+            to_encode["services"] = services
+    
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
@@ -232,7 +272,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token = create_access_token(data={"sub": user.username})
+    access_token = await create_access_token(data={"sub": user.username}, db=db)
     refresh_token = create_refresh_token(data={"sub": user.username})
 
     return Token(
@@ -255,7 +295,7 @@ async def refresh_token(refresh_token: str, db: AsyncSession = Depends(get_db)):
         if user is None:
             raise HTTPException(status_code=401, detail="User not found")
 
-        access_token = create_access_token(data={"sub": user.username})
+        access_token = await create_access_token(data={"sub": user.username}, db=db)
         new_refresh_token = create_refresh_token(data={"sub": user.username})
 
         return Token(
@@ -276,35 +316,50 @@ async def read_users_me(current_user: User = Depends(get_current_active_user)):
         is_active=current_user.is_active
     )
 
-@app.get("/users/{user_id}/permissions")
-async def get_user_permissions(
-    user_id: str,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+@app.get("/users/me/services")
+async def read_user_services(
+    current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
-    # Internal endpoint for other services
-    # Validate internal token
-    if credentials.credentials != settings.internal_auth_token:
-        raise HTTPException(status_code=403, detail="Forbidden")
-    
-    user = await User.get_by_username(db, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    # Get user's role permissions
+    """Get service-specific permissions for current user"""
+    services = await current_user.get_service_permissions(db)
+    return {
+        "user_id": str(current_user.id),
+        "username": current_user.username,
+        "services": services
+    }
+
+@app.get("/users/search")
+async def search_users(
+    q: str,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Search users by username, full_name or email"""
+    search_pattern = f"%{q}%"
     result = await db.execute(
         text("""
-            SELECT p.name 
-            FROM permissions p
-            JOIN role_permissions rp ON p.id = rp.permission_id
-            JOIN roles r ON rp.role_id = r.id
-            WHERE r.id = :role_id
+            SELECT id, username, email, full_name, is_active 
+            FROM users 
+            WHERE (username ILIKE :pattern OR full_name ILIKE :pattern OR email ILIKE :pattern)
+            AND is_active = true
+            LIMIT 10
         """),
-        {"role_id": user.role_id}
+        {"pattern": search_pattern}
     )
-    
-    permissions = [row[0] for row in result.fetchall()]
-    return permissions
+    rows = result.fetchall()
+    return {
+        "users": [
+            {
+                "id": str(row.id),
+                "username": row.username,
+                "full_name": row.full_name,
+                "email": row.email,
+                "is_active": row.is_active
+            }
+            for row in rows
+        ]
+    }
 
 @app.get("/users")
 async def list_users(
@@ -331,37 +386,6 @@ async def list_users(
         for row in rows
     ]
 
-@app.get("/users/search")
-async def search_users(
-    q: str,
-    current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """Search users by username or email"""
-    search_pattern = f"%{q}%"
-    result = await db.execute(
-        text("""
-            SELECT id, username, email, is_active 
-            FROM users 
-            WHERE (username ILIKE :pattern OR email ILIKE :pattern)
-            AND is_active = true
-            LIMIT 10
-        """),
-        {"pattern": search_pattern}
-    )
-    rows = result.fetchall()
-    return {
-        "users": [
-            {
-                "id": str(row.id),
-                "username": row.username,
-                "email": row.email,
-                "is_active": row.is_active
-            }
-            for row in rows
-        ]
-    }
-
 @app.post("/logout")
 async def logout(response: dict):
     # In a real implementation, you might want to invalidate the token
@@ -376,6 +400,103 @@ async def health_check():
 async def metrics():
     # Basic metrics endpoint for Prometheus
     return {"status": "ok", "service": "auth-service"}
+
+# Internal endpoints for inter-service communication
+@app.get("/internal/users/{user_id}/permissions")
+async def get_user_permissions_internal(
+    user_id: str,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db)
+):
+    """Internal endpoint for other services to get user permissions"""
+    # Validate internal token
+    if credentials.credentials != settings.internal_auth_token:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    
+    user = await User.get_by_username(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get user's role permissions
+    result = await db.execute(
+        text("""
+            SELECT p.name 
+            FROM permissions p
+            JOIN role_permissions rp ON p.id = rp.permission_id
+            JOIN roles r ON rp.role_id = r.id
+            WHERE r.id = :role_id
+        """),
+        {"role_id": user.role_id}
+    )
+    
+    permissions = [row[0] for row in result.fetchall()]
+    return permissions
+
+@app.get("/internal/users/{user_id}/services/{service_slug}")
+async def check_user_service_access_internal(
+    user_id: str,
+    service_slug: str,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db)
+):
+    """Internal endpoint to check if user has access to specific service"""
+    # Validate internal token
+    if credentials.credentials != settings.internal_auth_token:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    
+    user = await User.get_by_username(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get user's service permissions
+    services = await user.get_service_permissions(db)
+    service_access = services.get(service_slug)
+    
+    if not service_access:
+        raise HTTPException(status_code=403, detail=f"User has no access to service: {service_slug}")
+    
+    return {
+        "user_id": str(user.id),
+        "service": service_slug,
+        "role": service_access.get("role"),
+        "permissions": service_access.get("perms", [])
+    }
+
+@app.get("/internal/services/{service_slug}/users")
+async def list_service_users_internal(
+    service_slug: str,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db)
+):
+    """Internal endpoint to list all users with access to a service"""
+    # Validate internal token
+    if credentials.credentials != settings.internal_auth_token:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    
+    # Get all users with roles in this service
+    result = await db.execute(
+        text("""
+            SELECT u.id, u.username, u.email, u.full_name, sr.name as role_name
+            FROM users u
+            JOIN user_service_roles usr ON u.id = usr.user_id
+            JOIN service_roles sr ON usr.service_role_id = sr.id
+            JOIN services s ON sr.service_id = s.id
+            WHERE s.slug = :service_slug AND s.is_active = true AND sr.is_active = true AND u.is_active = true
+        """),
+        {"service_slug": service_slug}
+    )
+    
+    users = []
+    for row in result.fetchall():
+        users.append({
+            "id": str(row.id),
+            "username": row.username,
+            "email": row.email,
+            "full_name": row.full_name,
+            "role": row.role_name
+        })
+    
+    return {"service": service_slug, "users": users}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -11,6 +11,16 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7
 
+    # Service identification for multi-service architecture
+    service_id: str = os.getenv("SERVICE_ID", "video")  # 'video', 'messenger', 'dashboard', 'support'
+    service_name: str = os.getenv("SERVICE_NAME", "Видеохостинг ДГИ")
+    
+    # Auth mode: 'standalone' (default, dev) or 'shared' (production with external auth)
+    auth_mode: str = os.getenv("AUTH_MODE", "standalone")  # 'standalone' or 'shared'
+    
+    # Shared auth service URL (used when auth_mode='shared')
+    shared_auth_url: str = os.getenv("SHARED_AUTH_URL", "http://auth-service:8000")
+
     # Internal auth token for service-to-service communication
     internal_auth_token: str = os.getenv("INTERNAL_AUTH_TOKEN", "internal-secret-token-change-in-production")
 
