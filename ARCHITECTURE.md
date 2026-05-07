@@ -118,7 +118,7 @@ sequenceDiagram
         A->>A: Создать JWT refresh_token (7 дней)
         A->>R: Сохранить session
         A-->>B: 302 Redirect to / (Set-Cookie)
-        Note over A,B: Cookies: session_id=xxx; access_token=eyJ...
+        Note over A,B: Cookies session_id xxx, access_token eyJ...
         B->>N: GET / (with cookies)
         N->>P: proxy (with headers)
         P->>A: GET /users/me (validate JWT)
