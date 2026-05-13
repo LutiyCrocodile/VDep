@@ -28,7 +28,8 @@ export default function CreateChannelPage() {
     } catch (err: any) {
       console.error('Create channel error:', err);
       const errorDetail = err.response?.data?.detail || err.message || 'Ошибка создания канала';
-      setError(`Ошибка: ${errorDetail}`);
+      const errorMessage = typeof errorDetail === 'string' ? errorDetail : JSON.stringify(errorDetail);
+      setError(`Ошибка: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -50,7 +51,7 @@ export default function CreateChannelPage() {
         <div className="bg-[#1a1a3e]/50 backdrop-blur-sm rounded-2xl p-8 border border-[#4f46e5]/30">
           {error && (
             <div className="bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-lg mb-6">
-              {error}
+              {typeof error === 'string' ? error : JSON.stringify(error)}
             </div>
           )}
 

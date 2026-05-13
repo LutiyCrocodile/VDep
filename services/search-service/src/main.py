@@ -84,12 +84,28 @@ async def search_videos(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=50),
     tags: Optional[str] = Query(None),
-    user_id: Optional[str] = Depends(get_current_user_id),
+    credentials: HTTPAuthorizationCredentials = Depends(security, auto_error=False),
 ):
     """
     Search videos by title, description, tags, and subtitles
+    Public videos are accessible without authentication
     """
     try:
+        # Get user_id if authenticated
+        user_id = None
+        if credentials:
+            async with httpx.AsyncClient() as client:
+                try:
+                    response = await client.get(
+                        f"{settings.auth_service_url}/users/me",
+                        headers={"Authorization": f"Bearer {credentials.credentials}"}
+                    )
+                    if response.status_code == 200:
+                        user_data = response.json()
+                        user_id = user_data["id"]
+                except httpx.RequestError:
+                    pass  # Continue without user_id
+
         # Build query
         must_clauses = [
             {
@@ -100,7 +116,7 @@ async def search_videos(
                 }
             }
         ]
-        
+
         # Filter by tags if provided
         if tags:
             tag_list = tags.split(",")
@@ -109,8 +125,8 @@ async def search_videos(
                     "tags": tag_list
                 }
             })
-        
-        # Filter by access (public or user's own videos)
+
+        # Filter by access (public or user's own videos if authenticated)
         if user_id:
             must_clauses.append({
                 "bool": {
@@ -121,7 +137,10 @@ async def search_videos(
                 }
             })
         else:
-            must_clauses.append({"term": {"is_private": False}})
+            # Only public videos for unauthenticated users
+            must_clauses.append({
+                "term": {"is_private": False}
+            })
         
         search_body = {
             "from": skip,
@@ -173,6 +192,7 @@ async def search_videos(
 async def get_subtitles(
     video_id: str,
     language: Optional[str] = Query(None),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """

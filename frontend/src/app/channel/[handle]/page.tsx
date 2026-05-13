@@ -7,6 +7,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import VideoCard from '@/components/video/VideoCard';
 import { channelsAPI, videosAPI } from '@/services/api';
 import { useAuth } from '@/services/auth-context';
+import { useSidebar } from '@/contexts/SidebarContext';
 import Link from 'next/link';
 
 interface Channel {
@@ -40,6 +41,7 @@ export default function PublicChannelPage() {
   const params = useParams();
   const handle = params.handle as string;
   const { user } = useAuth();
+  const { isCollapsed } = useSidebar();
   
   const [channel, setChannel] = useState<Channel | null>(null);
   const [videos, setVideos] = useState<Video[]>([]);
@@ -179,7 +181,7 @@ export default function PublicChannelPage() {
     <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] to-[#1a1a3e]">
       <Header />
       <Sidebar />
-      <main className="ml-64 pt-14 min-h-screen">
+      <main className={`pt-14 min-h-screen transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
         <div className="max-w-7xl mx-auto">
           {/* Banner */}
           {channel.banner_url ? (

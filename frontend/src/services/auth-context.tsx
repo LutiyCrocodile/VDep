@@ -35,9 +35,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load user from localStorage on mount
+  // Load user from localStorage or URL params (for cross-service redirects from portal)
   useEffect(() => {
     const loadUser = async () => {
+      // Check for token in URL params (from portal redirect)
+      if (typeof window !== 'undefined') {
+        const urlParams = new URLSearchParams(window.location.search);
+        const accessToken = urlParams.get('access_token');
+        const refreshToken = urlParams.get('refresh_token');
+
+        if (accessToken && refreshToken) {
+          // Set tokens from URL
+          localStorage.setItem('access_token', accessToken);
+          localStorage.setItem('refresh_token', refreshToken);
+          // Clean URL
+          const newUrl = window.location.pathname + window.location.hash;
+          window.history.replaceState({}, document.title, newUrl);
+        }
+      }
+
       const token = localStorage.getItem('access_token');
       if (token) {
         try {
@@ -73,6 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('refresh_token');
     setUser(null);
     setIsAuthenticated(false);
+    window.location.href = 'http://localhost:3002/login';
   };
 
   return (

@@ -5,6 +5,7 @@ import Header from '@/components/layout/Header';
 import Sidebar from '@/components/layout/Sidebar';
 import Link from 'next/link';
 import { streamsAPI } from '@/services/api';
+import { useSidebar } from '@/contexts/SidebarContext';
 
 interface Stream {
   id: string;
@@ -20,6 +21,7 @@ interface Stream {
 export default function StreamsPage() {
   const [streams, setStreams] = useState<Stream[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const { isCollapsed } = useSidebar();
 
   useEffect(() => {
     const fetchStreams = async () => {
@@ -64,7 +66,7 @@ export default function StreamsPage() {
       <Header />
       <Sidebar />
       
-      <main className="ml-64 pt-14 min-h-screen bg-[#0f0f0f]">
+      <main className={`pt-14 min-h-screen bg-[#0f0f0f] transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
         <div className="p-6">
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-2xl font-bold text-white">Прямые трансляции</h1>

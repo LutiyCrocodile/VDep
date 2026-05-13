@@ -1,8 +1,1 @@
-{
-  "/page": "app/page.js",
-  "/login/page": "app/login/page.js",
-  "/channel/[handle]/page": "app/channel/[handle]/page.js",
-  "/go-live/page": "app/go-live/page.js",
-  "/upload/page": "app/upload/page.js",
-  "/watch/page": "app/watch/page.js"
-}
+{}

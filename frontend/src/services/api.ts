@@ -137,7 +137,17 @@ export const authAPI = {
     const response = await apiClient.get('/users');
     return response.data;
   },
-  
+
+  searchAllUsers: async () => {
+    const response = await apiClient.get('/users/search-all');
+    return response.data;
+  },
+
+  searchUsers: async (query: string) => {
+    const response = await apiClient.get(`/users/search?q=${encodeURIComponent(query)}`);
+    return response.data;
+  },
+
   logout: async () => {
     const response = await apiClient.post('/logout');
     return response.data;
@@ -167,12 +177,17 @@ export const videosAPI = {
       initFormData.append('is_private', 'false');
       initFormData.append('tags', '[]');
       initFormData.append('classification', metadata.classification || 'public');
+      if (metadata.channelId) {
+        initFormData.append('channel_id', metadata.channelId);
+      }
       
       console.log('[Upload] Step 1: Initializing upload...', metadata.title);
       
       const initResponse = await videoApiClient.post('/videos/upload/init', initFormData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 30000,
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
       });
       
       const { video_id, minio_key } = initResponse.data;
@@ -188,8 +203,10 @@ export const videosAPI = {
       fileFormData.append('file', file);
       
       const uploadResponse = await videoApiClient.post(`/videos/${video_id}/upload-data`, fileFormData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 600000, // 10 minutes for large files
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
         onUploadProgress: (progressEvent) => {
           if (progressEvent.total) {
             const progress = Math.round((progressEvent.loaded / progressEvent.total) * 60) + 20; // 20-80%
@@ -278,6 +295,11 @@ export const videosAPI = {
     const response = await videoApiClient.get(`/videos/${videoId}/likes`);
     return response.data;
   },
+
+  getLikedVideos: async (skip = 0, limit = 20) => {
+    const response = await videoApiClient.get(`/videos/liked?skip=${skip}&limit=${limit}`);
+    return response.data;
+  },
   
   recordView: async (videoId: string) => {
     // Get or create session ID for anonymous tracking
@@ -294,6 +316,11 @@ export const videosAPI = {
     const response = await videoApiClient.post(`/videos/${videoId}/views`, {
       session_id: sessionId
     });
+    return response.data;
+  },
+
+  getViewHistory: async (skip = 0, limit = 50) => {
+    const response = await videoApiClient.get(`/videos/history?skip=${skip}&limit=${limit}`);
     return response.data;
   },
   

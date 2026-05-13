@@ -106,6 +106,7 @@ class User(Base):
     esia_id = Column(String(255))
     role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id"), nullable=True)
     is_active = Column(Boolean, default=True)
+    is_employee = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
@@ -137,8 +138,8 @@ class User(Base):
         role_id = kwargs.get('role_id')
         await db.execute(
             text("""
-                INSERT INTO users (id, username, email, password_hash, ldap_dn, esia_id, role_id, is_active)
-                VALUES (:id, :username, :email, :password_hash, :ldap_dn, :esia_id, :role_id, :is_active)
+                INSERT INTO users (id, username, email, password_hash, ldap_dn, esia_id, role_id, is_active, is_employee)
+                VALUES (:id, :username, :email, :password_hash, :ldap_dn, :esia_id, :role_id, :is_active, :is_employee)
             """),
             {
                 "id": user_id,
@@ -148,7 +149,8 @@ class User(Base):
                 "ldap_dn": kwargs.get('ldap_dn'),
                 "esia_id": kwargs.get('esia_id'),
                 "role_id": role_id,
-                "is_active": kwargs.get('is_active', True)
+                "is_active": kwargs.get('is_active', True),
+                "is_employee": kwargs.get('is_employee', True)
             }
         )
         await db.commit()

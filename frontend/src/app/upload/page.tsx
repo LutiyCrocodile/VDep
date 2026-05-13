@@ -4,16 +4,18 @@ import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/layout/Header';
 import Sidebar from '@/components/layout/Sidebar';
-import { videosAPI, channelsAPI } from '@/services/api';
+import { videosAPI, channelsAPI, authAPI } from '@/services/api';
 import { useAuth } from '@/services/auth-context';
+import { useSidebar } from '@/contexts/SidebarContext';
 
 export default function UploadPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const { isCollapsed } = useSidebar();
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [classification, setClassification] = useState('public');
+  const [classification, setClassification] = useState('internal');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [dragActive, setDragActive] = useState(false);
@@ -25,15 +27,13 @@ export default function UploadPage() {
   const [isPublished, setIsPublished] = useState(false);
   
   // For restricted (personal) videos - user access management
-  const [selectedUsers, setSelectedUsers] = useState<Array<{id: string, username: string, full_name?: string}>>([]);
+  const [selectedUsers, setSelectedUsers] = useState<Array<{id: string, username: string, full_name?: string, email?: string}>>([]);
   const [userSearchQuery, setUserSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Array<{id: string, username: string, full_name?: string}>>([]);
+  const [searchResults, setSearchResults] = useState<Array<{id: string, username: string, full_name?: string, email?: string}>>([]);
   const [isSearching, setIsSearching] = useState(false);
 
   const CLASSIFICATION_OPTIONS = [
-    { value: 'public', label: 'Публичный', description: 'Видео доступно всем пользователям' },
-    { value: 'internal', label: 'Внутренний', description: 'Доступно только зарегистрированным пользователям' },
-    { value: 'confidential', label: 'Конфиденциальный', description: 'Доступно только сотрудникам ДГИ' },
+    { value: 'internal', label: 'Только для сотрудников', description: 'Доступно всем авторизованным сотрудникам' },
     { value: 'restricted', label: 'Личный', description: 'Доступно только выбранным пользователям' },
   ];
 
@@ -102,6 +102,12 @@ export default function UploadPage() {
       return;
     }
 
+    // Validate that personal videos have at least one user selected
+    if (classification === 'restricted' && selectedUsers.length === 0) {
+      setError('Для личного видео необходимо выбрать хотя бы одного пользователя');
+      return;
+    }
+
     setIsUploading(true);
     setUploadProgress(0);
     setError('');
@@ -129,7 +135,9 @@ export default function UploadPage() {
       if (err.message === 'Network Error') {
         errorMessage = 'Ошибка сети. Проверьте подключение к интернету и доступность сервера.';
       } else if (err.response?.data?.detail) {
-        errorMessage = err.response.data.detail;
+        const detail = err.response.data.detail;
+        // Ensure detail is always converted to string (handles Pydantic validation errors)
+        errorMessage = typeof detail === 'string' ? detail : JSON.stringify(detail);
       } else if (err.response?.status === 413) {
         errorMessage = 'Файл слишком большой. Максимальный размер: 2GB.';
       } else if (err.response?.status === 403) {
@@ -139,7 +147,8 @@ export default function UploadPage() {
         errorMessage = err.message;
       }
       
-      setError(errorMessage);
+      // Final safety check - ensure errorMessage is always a string
+      setError(typeof errorMessage === 'string' ? errorMessage : String(errorMessage));
       setUploadProgress(0);
     } finally {
       setIsUploading(false);
@@ -191,56 +200,66 @@ export default function UploadPage() {
 
   // Search users for personal video access
   const searchUsers = async (query: string) => {
-    console.log('searchUsers called with query:', query);
+    console.log('[User Search] searchUsers called with query:', query);
     if (!query || query.length < 2) {
       setSearchResults([]);
       return;
     }
-    
+
     setIsSearching(true);
     try {
-      const token = localStorage.getItem('token');
-      console.log('Using token:', token ? 'present' : 'missing');
-      
-      // Use auth service to search users
-      const apiUrl = process.env.NEXT_PUBLIC_AUTH_API_URL || 'http://localhost:8000';
-      const url = `${apiUrl}/api/v1/users/search?q=${encodeURIComponent(query)}`;
-      console.log('Fetching from:', url);
-      
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      console.log('Response status:', response.status);
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Search results:', data);
-        // Filter out already selected users
-        const filtered = data.users?.filter((u: any) => 
-          !selectedUsers.find(su => su.id === u.id)
-        ) || [];
-        console.log('Filtered results:', filtered);
-        setSearchResults(filtered.map((u: any) => ({ 
-          id: u.id, 
-          username: u.username || u.email,
-          full_name: u.full_name 
-        })));
-      } else {
-        const errorText = await response.text();
-        console.error('Search failed:', response.status, errorText);
-      }
-    } catch (err) {
-      console.error('Failed to search users:', err);
+      console.log('[User Search] Calling authAPI.searchUsers...');
+      const data = await authAPI.searchUsers(query);
+      console.log('[User Search] Search results:', data);
+      // Filter out already selected users
+      const filtered = data.users?.filter((u: any) =>
+        !selectedUsers.find(su => su.id === u.id)
+      ) || [];
+      console.log('[User Search] Filtered results:', filtered);
+      setSearchResults(filtered.map((u: any) => ({
+        id: u.id,
+        username: u.username || u.email,
+        full_name: u.full_name,
+        email: u.email
+      })));
+    } catch (err: any) {
+      console.error('[User Search] Failed to search users:', err);
+      console.error('[User Search] Error details:', err.response?.data);
+      setSearchResults([]);
     } finally {
       setIsSearching(false);
     }
   };
 
-  const addUser = (user: {id: string, username: string, full_name?: string}) => {
+  // Load all users for personal video access
+  const loadAllUsers = async () => {
+    console.log('[User Search] loadAllUsers called');
+    setIsSearching(true);
+    try {
+      console.log('[User Search] Calling authAPI.searchAllUsers...');
+      const data = await authAPI.searchAllUsers();
+      console.log('[User Search] All users:', data);
+      // Filter out already selected users
+      const filtered = data.users?.filter((u: any) =>
+        !selectedUsers.find(su => su.id === u.id)
+      ) || [];
+      console.log('[User Search] Filtered results:', filtered);
+      setSearchResults(filtered.map((u: any) => ({
+        id: u.id,
+        username: u.username || u.email,
+        full_name: u.full_name,
+        email: u.email
+      })));
+    } catch (err: any) {
+      console.error('[User Search] Failed to load all users:', err);
+      console.error('[User Search] Error details:', err.response?.data);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const addUser = (user: {id: string, username: string, full_name?: string, email?: string}) => {
     if (!selectedUsers.find(u => u.id === user.id)) {
       setSelectedUsers([...selectedUsers, user]);
     }
@@ -270,7 +289,7 @@ export default function UploadPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] to-[#1a1a3e]">
         <Header />
-        <main className="ml-64 pt-14 min-h-screen flex items-center justify-center">
+        <main className={`pt-14 min-h-screen flex items-center justify-center transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
           <div className="text-center">
             <p className="text-white text-xl mb-4">Необходимо войти в систему</p>
             <button
@@ -290,7 +309,7 @@ export default function UploadPage() {
       <Header />
       <Sidebar />
       
-      <main className="ml-64 pt-14 min-h-screen">
+      <main className={`pt-14 min-h-screen transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
         <div className="max-w-2xl mx-auto p-6">
           <h1 className="text-3xl font-bold text-white mb-6">Загрузка видео</h1>
 
@@ -357,7 +376,7 @@ export default function UploadPage() {
 
             {error && (
               <div className="bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-lg">
-                {error}
+                {typeof error === 'string' ? error : JSON.stringify(error)}
               </div>
             )}
 
@@ -449,6 +468,15 @@ export default function UploadPage() {
                   )}
                 </div>
 
+                {/* Show all users button */}
+                <button
+                  type="button"
+                  onClick={loadAllUsers}
+                  className="text-xs text-red-400 hover:text-red-300 mb-3"
+                >
+                  Показать всех пользователей
+                </button>
+
                 {/* Hint for min chars */}
                 {userSearchQuery.length > 0 && userSearchQuery.length < 2 && !isSearching && (
                   <p className="text-gray-500 text-xs mt-1">Введите минимум 2 символа для поиска</p>
@@ -456,27 +484,37 @@ export default function UploadPage() {
 
                 {/* Search results */}
                 {searchResults.length > 0 && (
-                  <div className="bg-[#0a0a1a]/80 border border-red-500/20 rounded-lg mb-3 max-h-40 overflow-y-auto">
+                  <div className="bg-[#0a0a1a]/80 border border-red-500/20 rounded-lg mb-3 max-h-60 overflow-y-auto">
                     {searchResults.map((user) => (
                       <button
                         key={user.id}
                         onClick={() => addUser(user)}
-                        className="w-full text-left px-3 py-2 hover:bg-red-500/20 text-white text-sm transition-colors flex items-center justify-between"
+                        className="w-full text-left px-4 py-3 hover:bg-red-500/20 text-white text-sm transition-colors border-b border-red-500/10 last:border-b-0"
                       >
-                        <div className="flex items-center gap-2">
-                          <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                          </svg>
-                          <div>
-                            <p className="font-medium">{user.full_name || user.username}</p>
-                            {user.full_name && (
-                              <p className="text-xs text-gray-400">@{user.username}</p>
-                            )}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center text-white font-medium text-sm flex-shrink-0">
+                              {(user.full_name || user.username || user.email || 'U')[0]?.toUpperCase() || 'U'}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-white truncate">{user.full_name || user.username}</p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <p className="text-xs text-gray-400 truncate">@{user.username}</p>
+                                {user.email && (
+                                  <>
+                                    <span className="text-gray-600">•</span>
+                                    <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex-shrink-0 ml-2">
+                            <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                            </svg>
                           </div>
                         </div>
-                        <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                        </svg>
                       </button>
                     ))}
                   </div>

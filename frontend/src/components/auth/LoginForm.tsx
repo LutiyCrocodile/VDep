@@ -22,58 +22,63 @@ export default function LoginForm() {
       await login(username, password);
       router.push('/');
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Неверное имя пользователя или пароль');
+      const detail = err.response?.data?.detail;
+      const errorMessage = typeof detail === 'string' ? detail : (detail ? JSON.stringify(detail) : 'Неверное имя пользователя или пароль');
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0a0a1a]">
-      <div className="bg-[#121228] p-8 rounded-2xl shadow-2xl w-full max-w-md border border-[#27274a]">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-100 flex items-center justify-center">
+      <div className="bg-white rounded-2xl p-8 shadow-lg w-full max-w-md border border-slate-200">
         <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
-              <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 20 20">
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center">
+              <svg className="w-7 h-7 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" />
               </svg>
             </div>
-            <span className="text-2xl font-bold bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent">VideoHost</span>
+            <div>
+              <span className="text-xl font-bold text-slate-900">Видеохостинг ДГИ</span>
+              <p className="text-xs text-slate-500">Корпоративная платформа</p>
+            </div>
           </div>
-          <h1 className="text-2xl font-semibold text-white">Вход</h1>
-          <p className="text-zinc-400 mt-2">Войдите в свой аккаунт</p>
+          <h1 className="text-2xl font-semibold text-slate-900">Вход</h1>
+          <p className="text-slate-600 mt-2">Войдите в свой аккаунт</p>
         </div>
 
         {error && (
-          <div className="bg-red-900/30 border border-red-500/50 text-red-200 px-4 py-3 rounded-xl mb-4">
-            {error}
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-4">
+            {typeof error === 'string' ? error : JSON.stringify(error)}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-zinc-300 mb-2">
+            <label className="block text-sm font-medium text-slate-700 mb-2">
               Имя пользователя
             </label>
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-4 py-3 bg-[#0a0a1a] border border-[#27274a] rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/20 transition-all"
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
               placeholder="Введите имя пользователя"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-zinc-300 mb-2">
+            <label className="block text-sm font-medium text-slate-700 mb-2">
               Пароль
             </label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-[#0a0a1a] border border-[#27274a] rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/20 transition-all"
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
               placeholder="Введите пароль"
               required
             />
@@ -82,7 +87,7 @@ export default function LoginForm() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/40"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40"
           >
             {isLoading ? (
               <span className="flex items-center justify-center gap-2">
@@ -97,9 +102,9 @@ export default function LoginForm() {
         </form>
 
         <div className="mt-6 text-center">
-          <p className="text-zinc-400">
+          <p className="text-slate-600">
             Нет аккаунта?{' '}
-            <Link href="/register" className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors">
+            <Link href="/register" className="text-blue-600 hover:text-blue-700 font-medium transition-colors">
               Зарегистрироваться
             </Link>
           </p>

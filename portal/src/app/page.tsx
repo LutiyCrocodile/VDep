@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 
 // Extend Window interface for runtime env
 declare global {
@@ -18,6 +19,7 @@ import {
   Headphones, 
   User, 
   LogOut,
+  LogIn,
   Building2,
   ChevronRight,
   Play,
@@ -43,7 +45,14 @@ const getVideoUrl = () => {
   if (typeof window !== 'undefined') {
     return window.ENV?.NEXT_PUBLIC_VIDEO_URL || 'http://localhost:3000';
   }
-  return process.env.NEXT_PUBLIC_VIDEO_URL || 'http://localhost:3000';
+  return 'http://localhost:3000';
+};
+
+const getAuthUrl = () => {
+  if (typeof window !== 'undefined') {
+    return window.ENV?.NEXT_PUBLIC_AUTH_URL || 'http://localhost:8000';
+  }
+  return 'http://localhost:8000';
 };
 
 // Available services configuration
@@ -59,39 +68,39 @@ const getServices = (): Service[] => [
     status: 'active',
     features: ['Загрузка видео', 'Трансляции', 'Категории', 'Поиск']
   },
-  {
-    id: 'messenger',
-    name: 'Мессенджер',
-    description: 'Защищённый корпоративный мессенджер для сотрудников ДГИ',
-    icon: <MessageSquare className="w-8 h-8" />,
-    url: '#',
-    color: 'text-emerald-600',
-    bgColor: 'bg-emerald-50',
-    status: 'coming-soon',
-    features: ['Чаты', 'Группы', 'Звонки', 'Файлы']
-  },
-  {
-    id: 'dashboard',
-    name: 'Дашборд',
-    description: 'Аналитическая панель с показателями и статистикой работы',
-    icon: <BarChart3 className="w-8 h-8" />,
-    url: '#',
-    color: 'text-purple-600',
-    bgColor: 'bg-purple-50',
-    status: 'coming-soon',
-    features: ['Отчёты', 'Графики', 'Метрики', 'Экспорт']
-  },
-  {
-    id: 'support',
-    name: 'Техподдержка',
-    description: 'Система подачи заявок в техническую поддержку',
-    icon: <Headphones className="w-8 h-8" />,
-    url: '#',
-    color: 'text-orange-600',
-    bgColor: 'bg-orange-50',
-    status: 'coming-soon',
-    features: ['Заявки', 'Чат', 'База знаний', 'Отслеживание']
-  }
+    {
+      id: 'messenger',
+      name: 'Мессенджер',
+      description: 'Защищённый корпоративный мессенджер для сотрудников ДГИ',
+      icon: <MessageSquare className="w-8 h-8" />,
+      url: 'http://localhost:3001',
+      color: 'text-emerald-600',
+      bgColor: 'bg-emerald-50',
+      status: 'coming-soon',
+      features: ['Чаты', 'Группы', 'Звонки', 'Файлы']
+    },
+    {
+      id: 'dashboard',
+      name: 'Дашборд',
+      description: 'Аналитическая панель с показателями и статистикой работы',
+      icon: <BarChart3 className="w-8 h-8" />,
+      url: 'http://localhost:3003',
+      color: 'text-purple-600',
+      bgColor: 'bg-purple-50',
+      status: 'coming-soon',
+      features: ['Отчёты', 'Графики', 'Метрики', 'Экспорт']
+    },
+    {
+      id: 'support',
+      name: 'Техподдержка',
+      description: 'Система подачи заявок в техническую поддержку',
+      icon: <Headphones className="w-8 h-8" />,
+      url: 'http://localhost:3004',
+      color: 'text-orange-600',
+      bgColor: 'bg-orange-50',
+      status: 'coming-soon',
+      features: ['Заявки', 'Чат', 'База знаний', 'Отслеживание']
+    }
 ];
 
 // Mock user data (replace with real auth)
@@ -99,8 +108,9 @@ interface User {
   id: string
   username: string
   email: string
-  fullName: string
+  full_name?: string
   role: string
+  is_employee: boolean
   avatar?: string
 }
 
@@ -108,45 +118,144 @@ export default function PortalPage() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [currentTime, setCurrentTime] = useState(new Date())
+  const [showLoginForm, setShowLoginForm] = useState(false)
+  const [loginData, setLoginData] = useState({ username: '', password: '' })
+  const [loginError, setLoginError] = useState('')
+  const [loginLoading, setLoginLoading] = useState(false)
+  const router = useRouter()
 
-  // Check auth status on mount
   useEffect(() => {
     checkAuth()
+
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
-    return () => clearInterval(timer)
+
+    // Listen for cross-service logout (e.g. from video hosting)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'access_token' && !e.newValue) {
+        handleLogout()
+      }
+    }
+    window.addEventListener('storage', handleStorageChange)
+
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('storage', handleStorageChange)
+    }
   }, [])
 
   const checkAuth = async () => {
-    // In dev, try to get user from localStorage or redirect to video service auth
-    const token = localStorage.getItem('token')
-    if (token) {
-      // TODO: Verify token with auth service
-      // For now, mock user
-      setUser({
-        id: '1',
-        username: 'employee',
-        email: 'employee@dgi.mos.ru',
-        fullName: 'Сотрудник ДГИ',
-        role: 'user'
-      })
+    // Check if user is already authenticated
+    const token = localStorage.getItem('access_token')
+    
+    if (!token) {
+      // No token - show login form on main page
+      setLoading(false)
+      return
     }
-    setLoading(false)
+
+    try {
+      const authUrl = getAuthUrl()
+      const res = await fetch(`${authUrl}/users/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+
+      if (res.ok) {
+        const userData = await res.json()
+        
+        // Check if user is employee
+        if (!userData.is_employee) {
+          localStorage.removeItem('access_token')
+          localStorage.removeItem('refresh_token')
+          // Non-employee - show login form
+          setLoading(false)
+          return
+        }
+        setUser(userData)
+        setLoading(false)
+      } else {
+        // Token expired or invalid
+        localStorage.removeItem('access_token')
+        localStorage.removeItem('refresh_token')
+        setLoading(false)
+      }
+    } catch (error) {
+      console.error('Auth check failed:', error)
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('refresh_token')
+      setLoading(false)
+    }
   }
 
-  const handleLogin = () => {
-    // Redirect to video service login (which uses auth-service)
-    const videoUrl = process.env.NEXT_PUBLIC_VIDEO_URL || 'http://localhost:3000'
-    window.location.href = `${videoUrl}/login?redirect=${encodeURIComponent(window.location.href)}`
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoginError('')
+    setLoginLoading(true)
+
+    try {
+      const authUrl = getAuthUrl()
+      const formData = new URLSearchParams()
+      formData.append('username', loginData.username)
+      formData.append('password', loginData.password)
+
+      const res = await fetch(`${authUrl}/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: formData.toString(),
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail || 'Ошибка входа')
+      }
+
+      const data = await res.json()
+      localStorage.setItem('access_token', data.access_token)
+      localStorage.setItem('refresh_token', data.refresh_token)
+
+      // Fetch user info
+      const meRes = await fetch(`${authUrl}/users/me`, {
+        headers: { Authorization: `Bearer ${data.access_token}` },
+      })
+      if (meRes.ok) {
+        const userData = await meRes.json()
+        if (userData.is_employee) {
+          setUser(userData)
+          setShowLoginForm(false)
+          setLoginData({ username: '', password: '' })
+        } else {
+          setLoginError('Доступ разрешен только сотрудникам ДГИ')
+          localStorage.removeItem('access_token')
+          localStorage.removeItem('refresh_token')
+        }
+      }
+    } catch (err: any) {
+      setLoginError(err.message || 'Не удалось войти')
+    } finally {
+      setLoginLoading(false)
+    }
   }
 
   const handleLogout = () => {
-    localStorage.removeItem('token')
+    localStorage.removeItem('access_token')
+    localStorage.removeItem('refresh_token')
     setUser(null)
+    setShowLoginForm(false)
+    setLoginData({ username: '', password: '' })
   }
 
   const handleServiceClick = (service: Service) => {
     if (service.status === 'active') {
-      window.location.href = service.url
+      const accessToken = localStorage.getItem('access_token')
+      const refreshToken = localStorage.getItem('refresh_token')
+      let url = service.url
+
+      // Append tokens for cross-service auth if authenticated
+      if (accessToken && refreshToken) {
+        const separator = url.includes('?') ? '&' : '?'
+        url += `${separator}access_token=${encodeURIComponent(accessToken)}&refresh_token=${encodeURIComponent(refreshToken)}`
+      }
+
+      window.location.href = url
     }
   }
 
@@ -187,8 +296,8 @@ export default function PortalPage() {
               {user ? (
                 <div className="flex items-center space-x-3">
                   <div className="text-right hidden sm:block">
-                    <p className="text-sm font-medium text-slate-900">{user.fullName}</p>
-                    <p className="text-xs text-slate-500">{user.role}</p>
+                    <p className="text-sm font-medium text-slate-900">{user.full_name || user.username}</p>
+                    <p className="text-xs text-slate-500 uppercase tracking-wider">{user.role}</p>
                   </div>
                   <div className="w-10 h-10 bg-gradient-to-br from-slate-100 to-slate-200 rounded-full flex items-center justify-center">
                     <User className="w-5 h-5 text-slate-600" />
@@ -203,11 +312,11 @@ export default function PortalPage() {
                 </div>
               ) : (
                 <button
-                  onClick={handleLogin}
-                  className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  onClick={() => router.push('/login')}
+                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/25 active:scale-95"
                 >
-                  <User className="w-4 h-4" />
-                  <span>Войти</span>
+                  <LogIn className="w-5 h-5" />
+                  Войти
                 </button>
               )}
             </div>
@@ -215,6 +324,7 @@ export default function PortalPage() {
         </div>
       </header>
 
+      {/* Auth redirect handled via /login page */}
       {/* Main content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Hero section */}

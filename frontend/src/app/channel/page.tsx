@@ -6,9 +6,11 @@ import Sidebar from '@/components/layout/Sidebar';
 import VideoCard from '@/components/video/VideoCard';
 import { channelsAPI } from '@/services/api';
 import { useAuth } from '@/services/auth-context';
+import { useSidebar } from '@/contexts/SidebarContext';
 
 export default function ChannelPage() {
   const { user } = useAuth();
+  const { isCollapsed } = useSidebar();
   const [channel, setChannel] = useState<any>(null);
   const [videos, setVideos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,7 +50,7 @@ export default function ChannelPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] to-[#1a1a3e]">
         <Header />
-        <main className="ml-64 pt-14 min-h-screen flex items-center justify-center">
+        <main className={`pt-14 min-h-screen flex items-center justify-center transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
           <p className="text-white">Войдите для просмотра канала</p>
         </main>
       </div>
@@ -60,7 +62,7 @@ export default function ChannelPage() {
       <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] to-[#1a1a3e]">
         <Header />
         <Sidebar />
-        <main className="ml-64 pt-14 min-h-screen">
+        <main className={`pt-14 min-h-screen transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
           <div className="flex items-center justify-center py-12">
             <div className="w-8 h-8 border-2 border-[#4f46e5] border-t-transparent rounded-full animate-spin" />
           </div>
@@ -74,7 +76,7 @@ export default function ChannelPage() {
       <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] to-[#1a1a3e]">
         <Header />
         <Sidebar />
-        <main className="ml-64 pt-14 min-h-screen">
+        <main className={`pt-14 min-h-screen transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
           <div className="max-w-4xl mx-auto p-6">
             <div className="bg-[#1a1a3e]/50 backdrop-blur-sm rounded-2xl p-8 border border-[#4f46e5]/30 text-center">
               <h1 className="text-2xl font-bold text-white mb-4">У вас нет канала</h1>
@@ -96,7 +98,7 @@ export default function ChannelPage() {
     <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] to-[#1a1a3e]">
       <Header />
       <Sidebar />
-      <main className="ml-64 pt-14 min-h-screen">
+      <main className={`pt-14 min-h-screen transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
         <div className="max-w-7xl mx-auto p-6">
           <div className="bg-[#1a1a3e]/50 backdrop-blur-sm rounded-2xl p-6 border border-[#4f46e5]/30 mb-6">
             <div className="flex items-center gap-4">

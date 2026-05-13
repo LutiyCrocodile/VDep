@@ -15,9 +15,11 @@ interface VideoCardProps {
     created_at: string;
     user_id?: string;
     owner_username?: string;
+    channel_handle?: string;
     channel_id?: string;
     status?: string;
     transcoding_progress?: number;
+    classification?: string;
   };
 }
 
@@ -92,6 +94,25 @@ export default function VideoCard({ video }: VideoCardProps) {
     return `${Math.floor(diffDays / 365)} г. назад`;
   };
 
+  const getClassificationBadge = () => {
+    if (!video.classification || video.classification === 'public') return null;
+
+    const badges = {
+      restricted: { text: 'Личное', color: 'bg-red-600/70' },
+      confidential: { text: 'Конфиденциальное', color: 'bg-yellow-600/70' },
+      internal: { text: 'Внутреннее', color: 'bg-blue-600/70' },
+    };
+
+    const badge = badges[video.classification as keyof typeof badges];
+    if (!badge) return null;
+
+    return (
+      <div className={`absolute top-2 left-2 ${badge.color} text-white text-xs px-2 py-1 rounded-lg font-medium opacity-80 group-hover:opacity-0 transition-opacity duration-100`}>
+        {badge.text}
+      </div>
+    );
+  };
+
   // Construct full thumbnail URL with fallback
   const getThumbnailUrl = () => {
     // If we have a thumbnail URL from API
@@ -105,7 +126,7 @@ export default function VideoCard({ video }: VideoCardProps) {
     }
     
     // No thumbnail available - generate placeholder with video title
-    const encodedTitle = encodeURIComponent(video.title.substring(0, 15));
+    const encodedTitle = video.title ? encodeURIComponent(video.title.substring(0, 15)) : 'Video';
     return `https://placehold.co/320x180/1a1a3e/FFFFFF/png?text=${encodedTitle}`;
   };
   
@@ -114,9 +135,10 @@ export default function VideoCard({ video }: VideoCardProps) {
   return (
     <Link href={`/watch?v=${video.id}`} className="group block">
       <div className="relative aspect-video rounded-xl overflow-hidden bg-[#1a1a3e] border border-[#27274a] group-hover:border-indigo-500/30 transition-all duration-300">
+        {getClassificationBadge()}
         <img
           src={thumbnailUrl}
-          alt={video.title}
+          alt={video.title || 'Video'}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           onError={() => setImageError(true)}
         />
@@ -150,16 +172,24 @@ export default function VideoCard({ video }: VideoCardProps) {
         )}
       </div>
       <div className="mt-3 flex gap-3">
-        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-medium text-sm flex-shrink-0 shadow-lg shadow-indigo-500/20">
+        <Link
+          href={video.channel_handle ? `/channel/${video.channel_handle}` : (video.owner_username ? `/channel/${video.owner_username}` : '#')}
+          className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-medium text-sm flex-shrink-0 shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/40 transition-all"
+          onClick={(e) => e.stopPropagation()}
+        >
           {video.owner_username?.[0]?.toUpperCase() || 'U'}
-        </div>
+        </Link>
         <div className="flex-1 min-w-0">
           <h3 className="text-white font-medium text-sm line-clamp-2 leading-tight group-hover:text-indigo-400 transition-colors duration-200">
-            {video.title}
+            {video.title || 'Без названия'}
           </h3>
-          <p className="text-zinc-400 text-sm mt-1 hover:text-zinc-300 transition-colors duration-200">
+          <Link
+            href={video.channel_handle ? `/channel/${video.channel_handle}` : (video.owner_username ? `/channel/${video.owner_username}` : '#')}
+            className="text-zinc-400 text-sm mt-1 hover:text-zinc-300 transition-colors duration-200 block"
+            onClick={(e) => e.stopPropagation()}
+          >
             {video.owner_username || 'Неизвестный'}
-          </p>
+          </Link>
           <p className="text-zinc-500 text-xs mt-0.5">
             {formatViews(video.views_count)} просмотров • {formatDate(video.created_at)}
           </p>

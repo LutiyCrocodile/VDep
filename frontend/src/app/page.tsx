@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Header from '@/components/layout/Header';
 import Sidebar from '@/components/layout/Sidebar';
 import VideoCard from '@/components/video/VideoCard';
-import { videosAPI } from '@/services/api';
+import { videosAPI, searchAPI } from '@/services/api';
+import { useSidebar } from '@/contexts/SidebarContext';
 
 interface Video {
   id: string;
@@ -16,6 +18,7 @@ interface Video {
   created_at: string;
   user_id?: string;
   owner_username?: string;
+  channel_handle?: string;
   status?: string;
   category?: string;
   classification?: string;
@@ -23,27 +26,54 @@ interface Video {
 
 const CLASSIFICATION_FILTERS = [
   { value: 'all', label: 'Все', color: 'bg-gray-600' },
-  { value: 'public', label: 'Публичные', color: 'bg-green-600' },
-  { value: 'internal', label: 'Внутренние', color: 'bg-blue-600' },
-  { value: 'confidential', label: 'Конфиденциальные', color: 'bg-yellow-600' },
   { value: 'restricted', label: 'Личные', color: 'bg-red-600' },
 ];
 
 export default function Home() {
+  const searchParams = useSearchParams();
+  const searchQuery = searchParams.get('q') || '';
   const [videos, setVideos] = useState<Video[]>([]);
   const [filteredVideos, setFilteredVideos] = useState<Video[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeClassification, setActiveClassification] = useState('all');
+  const { isCollapsed } = useSidebar();
 
   useEffect(() => {
     const fetchVideos = async () => {
+      setIsLoading(true);
+      setError('');
       try {
-        const data = await videosAPI.getVideos(0, 24);
-        // API returns direct array, not {videos: [...]}
-        setVideos(Array.isArray(data) ? data : (data.videos || []));
-      } catch (err) {
-        setError('Не удалось загрузить видео');
+        let data;
+        if (searchQuery.trim()) {
+          console.log('[Search] Using search API with query:', searchQuery);
+          // Use search API for full-text search
+          try {
+            data = await searchAPI.search(searchQuery);
+            console.log('[Search] Search API response:', data);
+            setVideos(Array.isArray(data) ? data : (data.results || data.videos || []));
+          } catch (searchError: any) {
+            console.error('[Search] Search API failed, falling back to video API:', searchError);
+            // Fallback: use video API and filter client-side
+            data = await videosAPI.getVideos(0, 100);
+            const allVideos = Array.isArray(data) ? data : (data.videos || []);
+            const filtered = allVideos.filter((v: Video) =>
+              v.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+              (v.description && v.description.toLowerCase().includes(searchQuery.toLowerCase()))
+            );
+            setVideos(filtered);
+          }
+        } else {
+          console.log('[Search] Using regular videos API (no search query)');
+          // Use regular videos API
+          data = await videosAPI.getVideos(0, 24);
+          setVideos(Array.isArray(data) ? data : (data.videos || []));
+        }
+      } catch (err: any) {
+        console.error('[Search] Error fetching videos:', err);
+        const errorDetail = err.response?.data?.detail || err.message || 'Не удалось загрузить видео';
+        const errorMessage = typeof errorDetail === 'string' ? errorDetail : JSON.stringify(errorDetail);
+        setError(errorMessage);
         // Mock data for demonstration with categories
         setVideos([
           {
@@ -108,7 +138,7 @@ export default function Home() {
     };
 
     fetchVideos();
-  }, []);
+  }, [searchQuery]);
 
   // Filter videos - only ready videos on home page, then by classification
   useEffect(() => {
@@ -128,7 +158,7 @@ export default function Home() {
       <Header />
       <Sidebar />
       
-      <main className="ml-64 pt-14 min-h-screen bg-[#0f0f0f]">
+      <main className={`pt-14 min-h-screen bg-[#0f0f0f] transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
         <div className="p-6">
           {/* Classification Filters */}
           <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
@@ -156,19 +186,29 @@ export default function Home() {
             </div>
           ) : error ? (
             <div className="text-center py-12">
-              <p className="text-red-400">{error}</p>
+              <p className="text-red-400">{typeof error === 'string' ? error : JSON.stringify(error)}</p>
             </div>
           ) : (
             <>
-              <h2 className="text-white text-xl font-semibold mb-6 flex items-center gap-2">
-                <span className="w-1.5 h-6 bg-gradient-to-b from-indigo-500 to-violet-600 rounded-full"></span>
-                Рекомендуемые видео
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-                {filteredVideos.map((video) => (
-                  <VideoCard key={video.id} video={video} />
-                ))}
-              </div>
+              {searchQuery && (
+                <h2 className="text-white text-xl font-semibold mb-6 flex items-center gap-2">
+                  <span className="w-1.5 h-6 bg-gradient-to-b from-indigo-500 to-violet-600 rounded-full"></span>
+                  Результаты поиска: "{searchQuery}"
+                </h2>
+              )}
+              {filteredVideos.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-gray-400 text-lg">
+                    {searchQuery ? 'По вашему запросу ничего не найдено' : 'Нет доступных видео'}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                  {filteredVideos.map((video) => (
+                    <VideoCard key={video.id} video={video} />
+                  ))}
+                </div>
+              )}
             </>
           )}
         </div>

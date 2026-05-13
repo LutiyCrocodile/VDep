@@ -5,6 +5,7 @@ import Header from '@/components/layout/Header';
 import Sidebar from '@/components/layout/Sidebar';
 import { channelsAPI } from '@/services/api';
 import { useAuth } from '@/services/auth-context';
+import { useSidebar } from '@/contexts/SidebarContext';
 import Link from 'next/link';
 
 interface Channel {
@@ -25,6 +26,7 @@ export default function SubscriptionsPage() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const { isCollapsed } = useSidebar();
 
   useEffect(() => {
     const fetchSubscriptions = async () => {
@@ -36,7 +38,8 @@ export default function SubscriptionsPage() {
         } catch (err: any) {
           console.error('Subscriptions error:', err);
           const errorDetail = err.response?.data?.detail || err.message || 'Ошибка загрузки подписок';
-          setError(`Ошибка: ${errorDetail}`);
+          const errorMessage = typeof errorDetail === 'string' ? errorDetail : JSON.stringify(errorDetail);
+          setError(`Ошибка: ${errorMessage}`);
         } finally {
           setLoading(false);
         }
@@ -49,7 +52,7 @@ export default function SubscriptionsPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] to-[#1a1a3e]">
         <Header />
-        <main className="ml-64 pt-14 min-h-screen flex items-center justify-center">
+        <main className={`pt-14 min-h-screen flex items-center justify-center transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
           <div className="text-center">
             <p className="text-white text-xl mb-4">Войдите для просмотра подписок</p>
             <Link
@@ -69,7 +72,7 @@ export default function SubscriptionsPage() {
       <Header />
       <Sidebar />
       
-      <main className="ml-64 pt-14 min-h-screen">
+      <main className={`pt-14 min-h-screen transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
         <div className="max-w-7xl mx-auto p-6">
           <h1 className="text-3xl font-bold text-white mb-6">Мои подписки</h1>
 
@@ -79,7 +82,7 @@ export default function SubscriptionsPage() {
             </div>
           ) : error ? (
             <div className="bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-lg">
-              {error}
+              {typeof error === 'string' ? error : JSON.stringify(error)}
             </div>
           ) : channels.length === 0 ? (
             <div className="text-center py-12">

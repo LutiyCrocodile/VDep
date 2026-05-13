@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     esia_client_secret: str = os.getenv("ESIA_CLIENT_SECRET", "")
     esia_redirect_uri: str = os.getenv("ESIA_REDIRECT_URI", "")
 
+    # Registration control
+    allow_registration: bool = os.getenv("ALLOW_REGISTRATION", "false").lower() == "true"
+
     class Config:
         env_file = ".env"
 

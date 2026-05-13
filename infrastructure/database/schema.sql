@@ -36,6 +36,7 @@ CREATE TABLE users (
     esia_id VARCHAR(255),
     role_id UUID NOT NULL REFERENCES roles(id),
     is_active BOOLEAN DEFAULT TRUE,
+    is_employee BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -246,3 +247,73 @@ INSERT INTO role_permissions (role_id, permission_id) VALUES
 ((SELECT id FROM roles WHERE name = 'manager'), (SELECT id FROM permissions WHERE name = 'view_private_videos')),
 ((SELECT id FROM roles WHERE name = 'manager'), (SELECT id FROM permissions WHERE name = 'manage_streams')),
 ((SELECT id FROM roles WHERE name = 'employee'), (SELECT id FROM permissions WHERE name = 'upload_video'));
+
+-- Service-specific roles and permissions for multi-service architecture
+-- Video service roles
+INSERT INTO service_roles (service_id, name, description) VALUES
+((SELECT id FROM services WHERE slug = 'video'), 'admin', 'Video service administrator'),
+((SELECT id FROM services WHERE slug = 'video'), 'manager', 'Video service manager'),
+((SELECT id FROM services WHERE slug = 'video'), 'uploader', 'Can upload and manage own videos'),
+((SELECT id FROM services WHERE slug = 'video'), 'viewer', 'Can view public videos');
+
+-- Video service permissions
+INSERT INTO service_permissions (service_id, name, description) VALUES
+((SELECT id FROM services WHERE slug = 'video'), 'video:upload', 'Can upload videos'),
+((SELECT id FROM services WHERE slug = 'video'), 'video:view_private', 'Can view private videos'),
+((SELECT id FROM services WHERE slug = 'video'), 'video:manage_own', 'Can manage own videos'),
+((SELECT id FROM services WHERE slug = 'video'), 'video:manage_all', 'Can manage all videos'),
+((SELECT id FROM services WHERE slug = 'video'), 'video:stream', 'Can create live streams'),
+((SELECT id FROM services WHERE slug = 'video'), 'video:moderate', 'Can moderate content'),
+((SELECT id FROM services WHERE slug = 'video'), 'video:audit', 'Can view audit logs');
+
+-- Assign video permissions to roles
+INSERT INTO service_role_permissions (role_id, permission_id) VALUES
+((SELECT sr.id FROM service_roles sr JOIN services s ON sr.service_id = s.id WHERE s.slug = 'video' AND sr.name = 'admin'), (SELECT sp.id FROM service_permissions sp JOIN services s ON sp.service_id = s.id WHERE s.slug = 'video' AND sp.name = 'video:upload')),
+((SELECT sr.id FROM service_roles sr JOIN services s ON sr.service_id = s.id WHERE s.slug = 'video' AND sr.name = 'admin'), (SELECT sp.id FROM service_permissions sp JOIN services s ON sp.service_id = s.id WHERE s.slug = 'video' AND sp.name = 'video:view_private')),
+((SELECT sr.id FROM service_roles sr JOIN services s ON sr.service_id = s.id WHERE s.slug = 'video' AND sr.name = 'admin'), (SELECT sp.id FROM service_permissions sp JOIN services s ON sp.service_id = s.id WHERE s.slug = 'video' AND sp.name = 'video:manage_all')),
+((SELECT sr.id FROM service_roles sr JOIN services s ON sr.service_id = s.id WHERE s.slug = 'video' AND sr.name = 'admin'), (SELECT sp.id FROM service_permissions sp JOIN services s ON sp.service_id = s.id WHERE s.slug = 'video' AND sp.name = 'video:stream')),
+((SELECT sr.id FROM service_roles sr JOIN services s ON sr.service_id = s.id WHERE s.slug = 'video' AND sr.name = 'admin'), (SELECT sp.id FROM service_permissions sp JOIN services s ON sp.service_id = s.id WHERE s.slug = 'video' AND sp.name = 'video:moderate')),
+((SELECT sr.id FROM service_roles sr JOIN services s ON sr.service_id = s.id WHERE s.slug = 'video' AND sr.name = 'admin'), (SELECT sp.id FROM service_permissions sp JOIN services s ON sp.service_id = s.id WHERE s.slug = 'video' AND sp.name = 'video:audit')),
+((SELECT sr.id FROM service_roles sr JOIN services s ON sr.service_id = s.id WHERE s.slug = 'video' AND sr.name = 'manager'), (SELECT sp.id FROM service_permissions sp JOIN services s ON sp.service_id = s.id WHERE s.slug = 'video' AND sp.name = 'video:upload')),
+((SELECT sr.id FROM service_roles sr JOIN services s ON sr.service_id = s.id WHERE s.slug = 'video' AND sr.name = 'manager'), (SELECT sp.id FROM service_permissions sp JOIN services s ON sp.service_id = s.id WHERE s.slug = 'video' AND sp.name = 'video:view_private')),
+((SELECT sr.id FROM service_roles sr JOIN services s ON sr.service_id = s.id WHERE s.slug = 'video' AND sr.name = 'manager'), (SELECT sp.id FROM service_permissions sp JOIN services s ON sp.service_id = s.id WHERE s.slug = 'video' AND sp.name = 'video:stream')),
+((SELECT sr.id FROM service_roles sr JOIN services s ON sr.service_id = s.id WHERE s.slug = 'video' AND sr.name = 'uploader'), (SELECT sp.id FROM service_permissions sp JOIN services s ON sp.service_id = s.id WHERE s.slug = 'video' AND sp.name = 'video:upload')),
+((SELECT sr.id FROM service_roles sr JOIN services s ON sr.service_id = s.id WHERE s.slug = 'video' AND sr.name = 'uploader'), (SELECT sp.id FROM service_permissions sp JOIN services s ON sp.service_id = s.id WHERE s.slug = 'video' AND sp.name = 'video:manage_own'));
+
+-- Messenger service roles
+INSERT INTO service_roles (service_id, name, description) VALUES
+((SELECT id FROM services WHERE slug = 'messenger'), 'admin', 'Messenger administrator'),
+((SELECT id FROM services WHERE slug = 'messenger'), 'moderator', 'Can moderate chats'),
+((SELECT id FROM services WHERE slug = 'messenger'), 'user', 'Regular messenger user');
+
+-- Messenger permissions
+INSERT INTO service_permissions (service_id, name, description) VALUES
+((SELECT id FROM services WHERE slug = 'messenger'), 'messenger:send', 'Can send messages'),
+((SELECT id FROM services WHERE slug = 'messenger'), 'messenger:create_chat', 'Can create group chats'),
+((SELECT id FROM services WHERE slug = 'messenger'), 'messenger:moderate', 'Can moderate messages'),
+((SELECT id FROM services WHERE slug = 'messenger'), 'messenger:admin', 'Full messenger administration');
+
+-- Dashboard service roles
+INSERT INTO service_roles (service_id, name, description) VALUES
+((SELECT id FROM services WHERE slug = 'dashboard'), 'admin', 'Dashboard administrator'),
+((SELECT id FROM services WHERE slug = 'dashboard'), 'viewer', 'Can view dashboard data'),
+((SELECT id FROM services WHERE slug = 'dashboard'), 'editor', 'Can edit dashboard configurations');
+
+-- Dashboard permissions
+INSERT INTO service_permissions (service_id, name, description) VALUES
+((SELECT id FROM services WHERE slug = 'dashboard'), 'dashboard:view', 'Can view dashboard'),
+((SELECT id FROM services WHERE slug = 'dashboard'), 'dashboard:edit', 'Can edit dashboard'),
+((SELECT id FROM services WHERE slug = 'dashboard'), 'dashboard:admin', 'Full dashboard administration');
+
+-- Support service roles
+INSERT INTO service_roles (service_id, name, description) VALUES
+((SELECT id FROM services WHERE slug = 'support'), 'admin', 'Support administrator'),
+((SELECT id FROM services WHERE slug = 'support'), 'agent', 'Support agent'),
+((SELECT id FROM services WHERE slug = 'support'), 'user', 'Can submit support tickets');
+
+-- Support permissions
+INSERT INTO service_permissions (service_id, name, description) VALUES
+((SELECT id FROM services WHERE slug = 'support'), 'support:create_ticket', 'Can create support tickets'),
+((SELECT id FROM services WHERE slug = 'support'), 'support:respond', 'Can respond to tickets'),
+((SELECT id FROM services WHERE slug = 'support'), 'support:close', 'Can close tickets'),
+((SELECT id FROM services WHERE slug = 'support'), 'support:admin', 'Full support administration');

@@ -5,12 +5,14 @@ import Link from 'next/link';
 import { useAuth } from '@/services/auth';
 import { useRouter } from 'next/navigation';
 import { channelsAPI } from '@/services/api';
+import { useSidebar } from '@/contexts/SidebarContext';
 
 export default function Header() {
   const [searchQuery, setSearchQuery] = useState('');
   const [userChannel, setUserChannel] = useState<any>(null);
   const { isAuthenticated, user } = useAuth();
   const router = useRouter();
+  const { isCollapsed, toggleSidebar } = useSidebar();
 
   useEffect(() => {
     const fetchChannel = async () => {
@@ -29,15 +31,26 @@ export default function Header() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      router.push(`/search?q=${encodeURIComponent(searchQuery)}`);
+      router.push(`/?q=${encodeURIComponent(searchQuery)}`);
+    } else {
+      router.push('/');
     }
   };
 
   return (
     <header className="fixed top-0 left-0 right-0 h-14 bg-[#0a0a1a]/95 backdrop-blur-md z-50 flex items-center justify-between px-4 border-b border-[#27274a]">
       <div className="flex items-center gap-4">
-        <button className="p-2 hover:bg-[#252550] rounded-full transition-all duration-200">
-          <svg className="w-6 h-6 text-zinc-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+        <button 
+          onClick={toggleSidebar}
+          className="p-2 hover:bg-[#252550] rounded-full transition-all duration-200"
+        >
+          <svg 
+            className={`w-6 h-6 text-zinc-300 transition-transform duration-300 ease-in-out ${isCollapsed ? 'rotate-90' : 'rotate-0'}`} 
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24" 
+            strokeWidth={1.5}
+          >
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
@@ -47,7 +60,7 @@ export default function Header() {
               <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" />
             </svg>
           </div>
-          <span className="text-xl font-bold bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent hidden sm:block">VideoHost</span>
+          <span className="text-xl font-bold bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent hidden sm:block">Видеохостинг ДГИ</span>
         </Link>
       </div>
 
@@ -99,20 +112,12 @@ export default function Header() {
             </Link>
           </>
         ) : (
-          <>
-            <Link
-              href="/login"
-              className="text-indigo-400 hover:text-indigo-300 text-sm font-medium mr-2 transition-colors"
-            >
-              Войти
-            </Link>
-            <Link
-              href="/register"
-              className="bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white px-5 py-2 rounded-full text-sm font-medium transition-all duration-200 shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/40"
-            >
-              Регистрация
-            </Link>
-          </>
+          <a
+            href="http://localhost:3002/login"
+            className="bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white px-5 py-2 rounded-full text-sm font-medium transition-all duration-200 shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/40"
+          >
+            Войти через портал
+          </a>
         )}
       </div>
     </header>

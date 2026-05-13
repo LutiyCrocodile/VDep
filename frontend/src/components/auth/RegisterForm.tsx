@@ -27,7 +27,9 @@ export default function RegisterForm() {
       await login(formData.username, formData.password);
       router.push('/');
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Ошибка регистрации');
+      const detail = err.response?.data?.detail;
+      const errorMessage = typeof detail === 'string' ? detail : (detail ? JSON.stringify(detail) : 'Ошибка регистрации');
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -43,7 +45,7 @@ export default function RegisterForm() {
                 <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" />
               </svg>
             </div>
-            <span className="text-2xl font-bold bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent">VideoHost</span>
+            <span className="text-2xl font-bold bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent">Видеохостинг ДГИ</span>
           </div>
           <h1 className="text-2xl font-semibold text-white">Регистрация</h1>
           <p className="text-zinc-400 mt-2">Создайте новый аккаунт</p>
@@ -51,7 +53,7 @@ export default function RegisterForm() {
 
         {error && (
           <div className="bg-red-900/30 border border-red-500/50 text-red-200 px-4 py-3 rounded-xl mb-4">
-            {error}
+            {typeof error === 'string' ? error : JSON.stringify(error)}
           </div>
         )}
 

@@ -399,28 +399,33 @@ class Video(Base):
     async def get_all(cls, db: AsyncSession, skip: int = 0, limit: int = 10, user_id: str = None, channel_id: str = None):
         # Only show ready videos that are processed and available for viewing
         if channel_id:
-            # Show all public videos for channel (including uploading/transcoding)
+            # Show all videos for channel (including restricted for owner)
             query = """
                 SELECT * FROM videos
-                WHERE channel_id = :channel_id AND is_private = false
+                WHERE channel_id = :channel_id
                 ORDER BY created_at DESC
                 LIMIT :limit OFFSET :skip
             """
             result = await db.execute(text(query), {"channel_id": channel_id, "limit": limit, "skip": skip})
         elif user_id:
-            # For authenticated users, show their own videos (any status) + public ready videos
+            # For authenticated users, show their own videos (any status, any classification) +
+            # public ready videos + restricted videos they have access to
             query = """
                 SELECT * FROM videos
-                WHERE (user_id = :user_id) OR (is_private = false AND status = 'ready')
+                WHERE (user_id = :user_id)
+                   OR (is_private = false AND status = 'ready' AND (classification IS NULL OR classification != 'restricted'))
+                   OR (classification = 'restricted' AND status = 'ready' AND id IN (
+                       SELECT video_id FROM video_user_access WHERE user_id = :user_id
+                   ))
                 ORDER BY created_at DESC
                 LIMIT :limit OFFSET :skip
             """
             result = await db.execute(text(query), {"user_id": user_id, "limit": limit, "skip": skip})
         else:
-            # For anonymous users, show only public ready videos
+            # For anonymous users, show only public ready videos (not restricted)
             query = """
                 SELECT * FROM videos
-                WHERE is_private = false AND status = 'ready'
+                WHERE is_private = false AND status = 'ready' AND (classification IS NULL OR classification != 'restricted')
                 ORDER BY created_at DESC
                 LIMIT :limit OFFSET :skip
             """

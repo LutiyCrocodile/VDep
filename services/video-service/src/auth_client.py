@@ -4,6 +4,7 @@ Supports both standalone (dev) and shared (prod) modes.
 """
 import httpx
 from typing import Optional, Dict, List
+from fastapi import HTTPException, Request
 from .config import settings
 import logging
 
@@ -22,7 +23,7 @@ class AuthClient:
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.get(
-                    f"{self.auth_url}/api/v1/users/me",
+                    f"{self.auth_url}/users/me",
                     headers={"Authorization": f"Bearer {token}"},
                     timeout=5.0
                 )

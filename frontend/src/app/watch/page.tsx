@@ -8,6 +8,7 @@ import VideoCard from '@/components/video/VideoCard';
 import { videosAPI, channelsAPI } from '@/services/api';
 import Link from 'next/link';
 import Hls from 'hls.js';
+import { useSidebar } from '@/contexts/SidebarContext';
 
 interface Video {
   id: string;
@@ -20,6 +21,7 @@ interface Video {
   user_id?: string;
   owner_username?: string;
   channel_id?: string;
+  channel_handle?: string;
   channel_name?: string;
   status?: string;
   hls_playlist_url?: string;
@@ -30,6 +32,7 @@ interface Video {
 export default function WatchPage() {
   const searchParams = useSearchParams();
   const videoId = searchParams.get('v');
+  const { isCollapsed } = useSidebar();
   const videoRef = useRef<HTMLVideoElement>(null);
   
   const [video, setVideo] = useState<Video | null>(null);
@@ -497,7 +500,7 @@ export default function WatchPage() {
       <Header />
       <Sidebar />
       
-      <main className="ml-64 pt-14 min-h-screen bg-[#0a0a1a]">
+      <main className={`pt-14 min-h-screen bg-[#0a0a1a] transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
         <div className="flex gap-6 p-6">
           {/* Main content */}
           <div className="flex-1 max-w-5xl">
@@ -708,23 +711,33 @@ export default function WatchPage() {
               
               <div className="flex items-center justify-between mt-4">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-indigo-500/20">
+                  <Link
+                    href={video.channel_handle ? `/channel/${video.channel_handle}` : (video.owner_username ? `/channel/${video.owner_username}` : '#')}
+                    className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/40 transition-all"
+                  >
                     {video.owner_username?.[0]?.toUpperCase() || 'U'}
-                  </div>
+                  </Link>
                   <div>
-                    <p className="text-white font-semibold">{video.owner_username || 'Неизвестный'}</p>
+                    <Link
+                      href={video.channel_handle ? `/channel/${video.channel_handle}` : (video.owner_username ? `/channel/${video.owner_username}` : '#')}
+                      className="text-white font-semibold hover:text-indigo-400 transition-colors block"
+                    >
+                      {video.owner_username || 'Неизвестный'}
+                    </Link>
                     <p className="text-zinc-400 text-sm">{formatViews(video.views_count)} просмотров • {formatDate(video.created_at)}</p>
                   </div>
-                  <button 
-                    onClick={handleSubscribe}
-                    className={`ml-4 px-6 py-2.5 rounded-full text-sm font-semibold transition-all duration-200 shadow-lg ${
-                      isSubscribed
-                        ? 'bg-zinc-700 text-white hover:bg-zinc-600'
-                        : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-indigo-500/20 hover:shadow-indigo-500/40'
-                    }`}
-                  >
-                    {isSubscribed ? 'Подписан' : 'Подписаться'}
-                  </button>
+                  {video.channel_id && (
+                    <button
+                      onClick={handleSubscribe}
+                      className={`ml-4 px-6 py-2.5 rounded-full text-sm font-semibold transition-all duration-200 shadow-lg ${
+                        isSubscribed
+                          ? 'bg-zinc-700 text-white hover:bg-zinc-600'
+                          : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-indigo-500/20 hover:shadow-indigo-500/40'
+                      }`}
+                    >
+                      {isSubscribed ? 'Подписан' : 'Подписаться'}
+                    </button>
+                  )}
                 </div>
                 
                 <div className="flex items-center gap-3">

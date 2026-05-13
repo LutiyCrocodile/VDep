@@ -6,18 +6,20 @@ import Sidebar from '@/components/layout/Sidebar';
 import VideoCard from '@/components/video/VideoCard';
 import { videosAPI } from '@/services/api';
 import { useAuth } from '@/services/auth-context';
+import { useSidebar } from '@/contexts/SidebarContext';
 
 export default function HistoryPage() {
   const { user } = useAuth();
   const [videos, setVideos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const { isCollapsed } = useSidebar();
 
   useEffect(() => {
     const fetchHistory = async () => {
       if (user) {
         try {
-          const data = await videosAPI.getVideos();
-          setVideos(data.videos || []);
+          const data = await videosAPI.getViewHistory();
+          setVideos(data.history || []);
         } catch (err) {
           console.error('Failed to fetch history:', err);
         } finally {
@@ -32,7 +34,7 @@ export default function HistoryPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] to-[#1a1a3e]">
         <Header />
-        <main className="ml-64 pt-14 min-h-screen flex items-center justify-center">
+        <main className={`pt-14 min-h-screen flex items-center justify-center transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
           <p className="text-white">Войдите для просмотра истории</p>
         </main>
       </div>
@@ -43,7 +45,7 @@ export default function HistoryPage() {
     <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] to-[#1a1a3e]">
       <Header />
       <Sidebar />
-      <main className="ml-64 pt-14 min-h-screen">
+      <main className={`pt-14 min-h-screen transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
         <div className="max-w-7xl mx-auto p-6">
           <h1 className="text-3xl font-bold text-white mb-6">История просмотров</h1>
           {loading ? (

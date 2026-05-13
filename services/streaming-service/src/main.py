@@ -76,10 +76,39 @@ async def get_current_user_id(credentials: HTTPAuthorizationCredentials = Depend
         except httpx.RequestError:
             raise HTTPException(status_code=503, detail="Auth service unavailable")
 
+async def get_current_user_with_permissions(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Get current user with service-specific permissions"""
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Token required")
+
+    from .auth_client import auth_client
+    user_data = await auth_client.verify_token(credentials.credentials)
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # Get service permissions
+    permissions = await auth_client.get_user_service_permissions(user_data["id"])
+    if not permissions:
+        raise HTTPException(status_code=403, detail="No access to streaming service")
+
+    return {
+        "id": user_data["id"],
+        "username": user_data["username"],
+        "permissions": permissions.get("permissions", [])
+    }
+
+def require_permission(permission: str):
+    """Dependency to require specific permission"""
+    async def dependency(user = Depends(get_current_user_with_permissions)):
+        if permission not in user["permissions"]:
+            raise HTTPException(status_code=403, detail=f"Permission '{permission}' required")
+        return user["id"]
+    return dependency
+
 @app.post("/streams", response_model=StreamResponse)
 async def create_stream(
     stream_data: StreamCreate,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_permission("video:stream")),
     db: AsyncSession = Depends(get_db)
 ):
     # Check if user has a channel
@@ -123,7 +152,7 @@ async def create_stream(
 
 @app.get("/streams", response_model=List[StreamResponse])
 async def list_streams(
-    user_id: Optional[str] = Depends(get_current_user_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     streams = await Stream.get_all(db, user_id=user_id)
@@ -143,7 +172,7 @@ async def list_streams(
 @app.get("/streams/{stream_id}", response_model=StreamResponse)
 async def get_stream(
     stream_id: str,
-    user_id: Optional[str] = Depends(get_current_user_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     stream = await Stream.get_by_id(db, stream_id)
@@ -151,7 +180,7 @@ async def get_stream(
         raise HTTPException(status_code=404, detail="Stream not found")
 
     # Check permissions for private streams
-    if stream.is_private and (not user_id or str(stream.user_id) != user_id):
+    if stream.is_private and str(stream.user_id) != user_id:
         if not await check_private_stream_permission(user_id, stream.user_id):
             raise HTTPException(status_code=403, detail="Access denied")
 
@@ -304,6 +333,7 @@ async def validate_stream_key(
 
 @app.get("/streams/live")
 async def get_live_streams(
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """

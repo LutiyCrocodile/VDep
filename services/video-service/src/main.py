@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,6 +61,7 @@ class VideoResponse(BaseModel):
     channel_id: Optional[str] = None
     views_count: int = 0
     owner_username: Optional[str] = None  # Channel name for display
+    channel_handle: Optional[str] = None  # Channel handle for URL
     transcoding_progress: int = 0  # 0-100%
     classification: str = "public"  # public, internal, confidential, restricted
     classification_id: Optional[str] = None
@@ -148,6 +149,53 @@ async def get_current_user_id(credentials: HTTPAuthorizationCredentials = Depend
         except httpx.RequestError:
             return None
 
+async def require_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Require authentication - returns user_id or raises 401"""
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(
+                f"{settings.auth_service_url}/users/me",
+                headers={"Authorization": f"Bearer {credentials.credentials}"}
+            )
+            if response.status_code == 200:
+                user_data = response.json()
+                return user_data["id"]
+            else:
+                raise HTTPException(status_code=401, detail="Invalid or expired token")
+        except httpx.RequestError:
+            raise HTTPException(status_code=401, detail="Authentication service unavailable")
+
+async def get_current_user_with_permissions(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Get current user with service-specific permissions"""
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Token required")
+
+    from .auth_client import auth_client
+    user_data = await auth_client.verify_token(credentials.credentials)
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # Get service permissions
+    permissions = await auth_client.get_user_service_permissions(user_data["id"])
+    if not permissions:
+        raise HTTPException(status_code=403, detail="No access to video service")
+
+    return {
+        "id": user_data["id"],
+        "username": user_data["username"],
+        "permissions": permissions.get("permissions", [])
+    }
+
+def require_permission(permission: str):
+    """Dependency to require specific permission"""
+    async def dependency(user = Depends(get_current_user_with_permissions)):
+        if permission not in user["permissions"]:
+            raise HTTPException(status_code=403, detail=f"Permission '{permission}' required")
+        return user["id"]
+    return dependency
+
 def generate_minio_key(video_id: str, filename: str) -> str:
     file_hash = hashlib.sha256(f"{video_id}{filename}".encode()).hexdigest()[:16]
     return f"{video_id}/{file_hash}"
@@ -161,18 +209,23 @@ async def init_upload(
     classification: str = Form("public"),  # public, internal, confidential, restricted
     filename: str = Form(...),
     file_size: int = Form(...),
-    user_id: str = Depends(get_current_user_id),
+    channel_id: Optional[str] = Form(None),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    logger.info(f"[Upload Init] Classification received: {classification}")
+
     # Validate classification level
     valid_classifications = ['public', 'internal', 'confidential', 'restricted']
     if classification not in valid_classifications:
         raise HTTPException(status_code=400, detail=f"Invalid classification. Must be one of: {', '.join(valid_classifications)}")
 
-    # Check if user has a channel
-    channel = await Channel.get_by_owner(db, user_id)
-    if not channel:
-        raise HTTPException(status_code=403, detail="You must create a channel before uploading videos")
+    # Resolve channel: use provided channel_id or look up user's channel
+    resolved_channel_id = channel_id
+    if not resolved_channel_id:
+        channel = await Channel.get_by_owner(db, user_id)
+        if channel:
+            resolved_channel_id = str(channel.id)
 
     # Parse tags
     try:
@@ -189,7 +242,7 @@ async def init_upload(
         "title": title,
         "description": description,
         "user_id": user_id,
-        "channel_id": str(channel.id),
+        "channel_id": resolved_channel_id,
         "file_size": file_size,
         "minio_key": minio_key,
         "status": "uploading",
@@ -219,7 +272,7 @@ async def init_upload(
 async def upload_video_data(
     video_id: str,
     file: UploadFile = File(...),
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Direct file upload endpoint - avoids CORS issues with MinIO"""
@@ -272,7 +325,7 @@ async def upload_video_data(
 @app.post("/videos/{video_id}/complete")
 async def complete_upload(
     video_id: str,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     # Verify video ownership
@@ -289,7 +342,7 @@ async def complete_upload(
 async def publish_video(
     video_id: str,
     background_tasks: BackgroundTasks,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Publish video - starts transcoding process"""
@@ -297,7 +350,9 @@ async def publish_video(
     video = await Video.get_by_id(db, video_id)
     if not video or str(video.user_id) != user_id:
         raise HTTPException(status_code=404, detail="Video not found")
-    
+
+    logger.info(f"[Publish] Video {video_id} classification: {video.classification}")
+
     # Check if video is in uploaded status
     if video.status != 'uploaded':
         raise HTTPException(status_code=400, detail=f"Cannot publish video with status: {video.status}. Only 'uploaded' videos can be published.")
@@ -316,7 +371,7 @@ def start_transcoding(video_id: str, minio_key: str):
     )
 
 def parse_duration(duration_val) -> Optional[int]:
-    """Parse duration string like '45s' to integer seconds"""
+    """Parse duration string like '45s' or timedelta to integer seconds"""
     if not duration_val:
         return None
     if isinstance(duration_val, int):
@@ -324,6 +379,9 @@ def parse_duration(duration_val) -> Optional[int]:
     if isinstance(duration_val, str):
         # Remove 's' suffix and convert to int
         return int(duration_val.rstrip('s'))
+    if hasattr(duration_val, 'total_seconds'):
+        # Handle timedelta objects from database
+        return int(duration_val.total_seconds())
     return None
 
 def get_thumbnail_url(thumbnail_path: str) -> str:
@@ -348,27 +406,67 @@ def get_playlist_url(playlist_path: str) -> str:
 async def list_videos(
     skip: int = 0,
     limit: int = 10,
-    current_user_id: Optional[str] = Depends(get_current_user_id),
+    current_user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     # Get user's classification level
     user_level = await get_user_classification_level(current_user_id)
-    
+
     videos = await Video.get_all(db, skip=skip, limit=limit, user_id=current_user_id)
+
+    logger.info(f"[List Videos] Total videos from DB: {len(videos)}")
+    for v in videos:
+        logger.info(f"[List Videos] Video {v.id}: classification={v.classification}, status={v.status}, user_id={v.user_id}")
+
+    # Filter restricted videos: only owner or explicitly granted users can see them
+    from .database import VideoUserAccess
+    final_videos = []
+    for v in videos:
+        # Owner can always see their own videos, EXCEPT restricted videos shared with others
+        if str(v.user_id) == current_user_id:
+            if v.classification == 'restricted':
+                # Check if owner has shared this video with others
+                # Get list of users with access
+                allowed_users = await VideoUserAccess.get_allowed_users(db, str(v.id))
+                if len(allowed_users) > 0:
+                    # Owner shared this video, don't show on main page (show in channel instead)
+                    logger.info(f"[List Videos] Video {v.id}: Owner restricted video shared with {len(allowed_users)} users, hiding from main page")
+                else:
+                    logger.info(f"[List Videos] Video {v.id}: Owner restricted video not shared, showing on main page")
+                    final_videos.append(v)
+            else:
+                logger.info(f"[List Videos] Video {v.id}: Owner access granted (non-restricted)")
+                final_videos.append(v)
+        # For other users' videos, check classification and access
+        else:
+            # For restricted videos, check explicit access FIRST (bypasses classification check)
+            if v.classification == 'restricted':
+                has_access = await VideoUserAccess.check_access(db, str(v.id), current_user_id)
+                logger.info(f"[List Videos] Video {v.id}: Restricted video, access check={has_access}")
+                if has_access:
+                    final_videos.append(v)
+            # For non-restricted videos, check classification level
+            else:
+                if can_access_classification(user_level, v.classification or 'public'):
+                    final_videos.append(v)
+                else:
+                    logger.info(f"[List Videos] Video {v.id}: Classification check failed - user_level={user_level}, video_level={v.classification}")
+    filtered_videos = final_videos
+
+    logger.info(f"[List Videos] Final videos after filtering: {len(filtered_videos)}")
     
-    # Filter videos by classification level
-    filtered_videos = [v for v in videos if can_access_classification(user_level, v.classification or 'public')]
-    
-    # Get channel names for all videos
+    # Get channel names and handles for all videos
     from .database import Channel
     channel_ids = [v.channel_id for v in filtered_videos if v.channel_id]
     channels = {}
+    channel_handles = {}
     if channel_ids:
         for cid in set(channel_ids):
             try:
                 channel = await Channel.get_by_id(db, str(cid))
                 if channel:
                     channels[str(cid)] = channel.name
+                    channel_handles[str(cid)] = channel.handle
             except:
                 pass
     
@@ -391,52 +489,152 @@ async def list_videos(
             channel_id=str(v.channel_id) if v.channel_id else None,
             views_count=v.views_count or 0,
             owner_username=channels.get(str(v.channel_id), "Неизвестный") if v.channel_id else "Неизвестный",
+            channel_handle=channel_handles.get(str(v.channel_id)) if v.channel_id else None,
             transcoding_progress=v.transcoding_progress or 0,
             classification=v.classification or 'public'
         ) for v in filtered_videos
     ]
 
+@app.get("/videos/liked")
+async def get_liked_videos(
+    skip: int = 0,
+    limit: int = 20,
+    user_id: str = Depends(require_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get videos liked by current user"""
+    result = await db.execute(
+        text("""
+            SELECT v.*, c.name as channel_name, c.handle as channel_handle FROM videos v
+            INNER JOIN video_likes vl ON v.id = vl.video_id
+            LEFT JOIN channels c ON v.channel_id = c.id
+            WHERE vl.user_id = :user_id
+            AND v.status = 'ready'
+            ORDER BY vl.created_at DESC
+            LIMIT :limit OFFSET :skip
+        """),
+        {"user_id": user_id, "limit": limit, "skip": skip}
+    )
+    rows = result.fetchall()
+    
+    videos = []
+    for row in rows:
+        video_dict = {
+            "id": str(row.id),
+            "title": row.title,
+            "description": row.description,
+            "thumbnail_url": get_thumbnail_url(row.thumbnail_url),
+            "duration": row.duration.total_seconds() if row.duration else None,
+            "views_count": row.views_count,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "user_id": str(row.user_id),
+            "channel_id": str(row.channel_id) if row.channel_id else None,
+            "owner_username": row.channel_name if row.channel_name else None,
+            "channel_handle": row.channel_handle if row.channel_handle else None,
+            "status": row.status,
+            "classification": row.classification,
+        }
+        videos.append(video_dict)
+    
+    return {"videos": videos, "total": len(videos)}
+
+@app.get("/videos/history")
+async def get_view_history(
+    user_id: str = Depends(require_current_user),
+    db: AsyncSession = Depends(get_db),
+    skip: int = 0,
+    limit: int = 50
+):
+    """Get user's view history with duplicates (each view is recorded)"""
+    query = """
+        SELECT 
+            v.*,
+            vv.viewed_at,
+            vv.watched_duration,
+            c.name as channel_name,
+            c.handle as channel_handle
+        FROM video_views vv
+        JOIN videos v ON vv.video_id = v.id
+        LEFT JOIN channels c ON v.channel_id = c.id
+        WHERE vv.user_id = :user_id
+        ORDER BY vv.viewed_at DESC
+        LIMIT :limit OFFSET :skip
+    """
+    result = await db.execute(text(query), {"user_id": user_id, "limit": limit, "skip": skip})
+    rows = result.fetchall()
+    
+    history = []
+    for row in rows:
+        video_dict = {
+            "id": str(row.id),
+            "title": row.title,
+            "description": row.description,
+            "thumbnail_url": get_thumbnail_url(row.thumbnail_url),
+            "duration": parse_duration(row.duration),
+            "views_count": row.views_count,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "user_id": str(row.user_id),
+            "channel_id": str(row.channel_id) if row.channel_id else None,
+            "owner_username": row.channel_name if row.channel_name else None,
+            "channel_handle": row.channel_handle if row.channel_handle else None,
+            "status": row.status,
+            "classification": row.classification,
+            "viewed_at": row.viewed_at.isoformat() if row.viewed_at else None,
+            "watched_duration": row.watched_duration,
+        }
+        history.append(video_dict)
+    
+    return {"history": history}
+
 @app.get("/videos/{video_id}", response_model=VideoResponse)
 async def get_video(
     video_id: str,
-    user_id: Optional[str] = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
+    range_header: str = Header(None, alias="range"),
     db: AsyncSession = Depends(get_db)
 ):
     video = await Video.get_by_id(db, video_id)
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
+    
+    # Type narrowing for linter
+    assert video is not None
 
     # Check if user is the owner
-    is_owner = user_id and str(video.user_id) == user_id
+    is_owner = str(video.user_id) == user_id
 
-    # Check permissions for private videos (owner always has access)
+    # Check if video is private (owner always has access)
     if video.is_private and not is_owner:
-        # Check if user has permission to view private videos
-        if not await check_private_video_permission(user_id, video.user_id):
-            raise HTTPException(status_code=403, detail="Access denied")
+        if not await check_private_video_permission(user_id, str(video.user_id)):
+            raise HTTPException(status_code=403, detail="Access denied: private video")
+
+    # Check if video is restricted (owner always has access)
+    has_explicit_access = False
+    if not is_owner and video.classification == 'restricted':
+        from .database import VideoUserAccess
+        has_access = await VideoUserAccess.check_access(db, video_id, user_id)
+        logger.info(f"[Get Video] Video {video_id}: Restricted video, access check={has_access}")
+        if not has_access:
+            raise HTTPException(status_code=403, detail="Access denied: no explicit access to restricted video")
+        has_explicit_access = True
 
     # Check classification level (owner always has access to their own videos)
-    if not is_owner:
-        # For 'restricted' (personal) videos - check specific user access
-        if video.classification == 'restricted':
-            from .database import VideoUserAccess
-            has_access = await VideoUserAccess.check_access(db, video_id, user_id)
-            if not has_access:
-                raise HTTPException(status_code=403, detail="Access denied: you don't have permission to view this personal video")
-        else:
-            # For other classifications - use standard level check
-            user_level = await get_user_classification_level(user_id)
-            if not can_access_classification(user_level, video.classification or 'public'):
-                raise HTTPException(status_code=403, detail="Access denied: insufficient classification level")
+    # Skip classification check if user has explicit access to restricted video
+    if not is_owner and not has_explicit_access:
+        user_level = await get_user_classification_level(user_id)
+        if not can_access_classification(user_level, video.classification or 'public'):
+            raise HTTPException(status_code=403, detail="Access denied: insufficient classification level")
 
-    # Get channel name for single video
+    # Get channel name and handle for single video
     owner_name = None
+    channel_handle = None
     if video.channel_id:
         try:
             from .database import Channel
             channel = await Channel.get_by_id(db, str(video.channel_id))
             if channel:
                 owner_name = channel.name
+                channel_handle = channel.handle
         except:
             pass
     
@@ -456,6 +654,7 @@ async def get_video(
         created_at=video.created_at,
         user_id=str(video.user_id),
         owner_username=owner_name,
+        channel_handle=channel_handle,
         channel_id=str(video.channel_id) if video.channel_id else None,
         views_count=video.views_count or 0,
         transcoding_progress=video.transcoding_progress or 0,
@@ -519,7 +718,7 @@ def can_access_classification(user_level: str, video_level: str) -> bool:
 @app.get("/videos/{video_id}/signed-url")
 async def get_signed_url(
     video_id: str,
-    user_id: Optional[str] = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     video = await Video.get_by_id(db, video_id)
@@ -545,7 +744,7 @@ async def get_signed_url(
 @app.get("/videos/{video_id}/thumbnail")
 async def get_video_thumbnail(
     video_id: str,
-    user_id: Optional[str] = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Get thumbnail URL for video"""
@@ -572,7 +771,7 @@ async def get_video_thumbnail(
 @app.get("/videos/{video_id}/playlist")
 async def get_video_playlist(
     video_id: str,
-    user_id: Optional[str] = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Get signed HLS playlist URL for video"""
@@ -590,9 +789,18 @@ async def get_video_playlist(
 
     # Check classification level (owner always has access to their own videos)
     if not is_owner:
-        user_level = await get_user_classification_level(user_id)
-        if not can_access_classification(user_level, video.classification or 'public'):
-            raise HTTPException(status_code=403, detail="Access denied: insufficient classification level")
+        # For restricted videos, check explicit access FIRST
+        if video.classification == 'restricted':
+            from .database import VideoUserAccess
+            has_access = await VideoUserAccess.check_access(db, video_id, user_id)
+            logger.info(f"[Playlist] Video {video_id}: Restricted video, access check={has_access}")
+            if not has_access:
+                raise HTTPException(status_code=403, detail="Access denied: no explicit access to restricted video")
+        else:
+            # For non-restricted videos, check classification level
+            user_level = await get_user_classification_level(user_id)
+            if not can_access_classification(user_level, video.classification or 'public'):
+                raise HTTPException(status_code=403, detail="Access denied: insufficient classification level")
 
     if not video.hls_playlist_url:
         raise HTTPException(status_code=404, detail="Video not ready for streaming")
@@ -612,7 +820,7 @@ async def update_video(
     description: Optional[str] = None,
     is_private: Optional[bool] = None,
     tags: Optional[str] = None,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     video = await Video.get_by_id(db, video_id)
@@ -638,7 +846,7 @@ async def update_video(
 @app.delete("/videos/{video_id}")
 async def delete_video(
     video_id: str,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     video = await Video.get_by_id(db, video_id)
@@ -684,7 +892,7 @@ class ViewRecordRequest(BaseModel):
 async def record_view(
     video_id: str,
     request: ViewRecordRequest,
-    user_id: Optional[str] = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     video = await Video.get_by_id(db, video_id)
@@ -776,13 +984,10 @@ async def record_view(
 @app.post("/videos/{video_id}/like")
 async def like_video(
     video_id: str,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Like a video"""
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
-    
     video = await Video.get_by_id(db, video_id)
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
@@ -807,13 +1012,10 @@ async def like_video(
 @app.delete("/videos/{video_id}/like")
 async def unlike_video(
     video_id: str,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Remove like from video"""
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
-    
     await db.execute(
         text("DELETE FROM video_likes WHERE video_id = :video_id AND user_id = :user_id"),
         {"video_id": video_id, "user_id": user_id}
@@ -825,7 +1027,7 @@ async def unlike_video(
 @app.get("/videos/{video_id}/likes")
 async def get_video_likes(
     video_id: str,
-    user_id: Optional[str] = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Get likes count and check if user liked"""
@@ -835,13 +1037,11 @@ async def get_video_likes(
     
     likes_count = await get_likes_count(db, video_id)
     
-    user_liked = False
-    if user_id:
-        result = await db.execute(
+    result = await db.execute(
             text("SELECT id FROM video_likes WHERE video_id = :video_id AND user_id = :user_id"),
             {"video_id": video_id, "user_id": user_id}
         )
-        user_liked = result.first() is not None
+    user_liked = result.first() is not None
     
     return {"likes_count": likes_count, "user_liked": user_liked}
 
@@ -857,7 +1057,7 @@ async def get_likes_count(db: AsyncSession, video_id: str) -> int:
 async def record_view(
     video_id: str,
     watched_duration: Optional[int] = None,
-    user_id: Optional[str] = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     video = await Video.get_by_id(db, video_id)
@@ -886,7 +1086,7 @@ async def record_view(
 @app.post("/channels", response_model=ChannelResponse)
 async def create_channel(
     channel_data: ChannelCreate,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     logger.info(f"POST /channels - user_id from token: {user_id} (type: {type(user_id)})")
@@ -930,7 +1130,7 @@ async def create_channel(
 # NOTE: /channels/my must be BEFORE /channels/{channel_id} to avoid routing conflicts
 @app.get("/channels/my", response_model=ChannelResponse)
 async def get_my_channel(
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     logger.info(f"GET /channels/my - user_id from token: {user_id} (type: {type(user_id)})")
@@ -956,6 +1156,7 @@ async def get_my_channel(
 @app.get("/channels/{channel_id}", response_model=ChannelResponse)
 async def get_channel(
     channel_id: str,
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     channel = await Channel.get_by_id(db, channel_id)
@@ -978,8 +1179,10 @@ async def get_channel(
 @app.get("/channels/handle/{handle}", response_model=ChannelResponse)
 async def get_channel_by_handle(
     handle: str,
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    """Get channel by handle (e.g., @username)"""
     channel = await Channel.get_by_handle(db, handle)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
@@ -1002,7 +1205,7 @@ async def get_channel_videos(
     channel_id: str,
     skip: int = 0,
     limit: int = 10,
-    user_id: Optional[str] = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     # Get channel info for owner_username
@@ -1040,6 +1243,7 @@ async def get_channel_videos(
             channel_id=str(v.channel_id) if v.channel_id else None,
             views_count=v.views_count or 0,
             owner_username=channel_name,
+            channel_handle=channel.handle if channel else None,
             transcoding_progress=v.transcoding_progress or 0,
             classification=v.classification or 'public'
         ) for v in filtered_videos
@@ -1050,31 +1254,36 @@ async def get_channel_videos(
 async def grant_video_access(
     video_id: str,
     target_user_id: str,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Grant access to a specific user for a personal (restricted) video"""
+    logger.info(f"[Grant Access] Granting access to video {video_id} for user {target_user_id} by {user_id}")
+
     # Verify video ownership
     video = await Video.get_by_id(db, video_id)
     if not video or str(video.user_id) != user_id:
+        logger.error(f"[Grant Access] Video not found or not owned by user")
         raise HTTPException(status_code=404, detail="Video not found")
-    
+
     # Only restricted videos can have specific user access
     if video.classification != 'restricted':
+        logger.error(f"[Grant Access] Video classification is not restricted: {video.classification}")
         raise HTTPException(status_code=400, detail="User access can only be granted for 'restricted' (personal) videos")
-    
+
     from .database import VideoUserAccess
     success = await VideoUserAccess.grant_access(db, video_id, target_user_id, user_id)
+    logger.info(f"[Grant Access] Grant access result: {success}")
     if not success:
         raise HTTPException(status_code=500, detail="Failed to grant access")
-    
+
     return {"message": "Access granted successfully"}
 
 @app.delete("/videos/{video_id}/access/{target_user_id}")
 async def revoke_video_access(
     video_id: str,
     target_user_id: str,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Revoke access from a user for a personal video"""
@@ -1090,7 +1299,7 @@ async def revoke_video_access(
 @app.get("/videos/{video_id}/access")
 async def get_video_access_list(
     video_id: str,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Get list of users with access to a personal video"""
@@ -1107,7 +1316,7 @@ async def get_video_access_list(
 @app.post("/channels/{channel_id}/subscribe", response_model=SubscriptionResponse)
 async def subscribe_to_channel(
     channel_id: str,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     # Check if channel exists
@@ -1138,7 +1347,7 @@ async def subscribe_to_channel(
 @app.delete("/channels/{channel_id}/subscribe")
 async def unsubscribe_from_channel(
     channel_id: str,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     # Check if channel exists
@@ -1157,12 +1366,9 @@ async def unsubscribe_from_channel(
 @app.get("/channels/{channel_id}/is_subscribed")
 async def check_subscription(
     channel_id: str,
-    user_id: Optional[str] = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    if not user_id:
-        return {"is_subscribed": False}
-    
     is_subscribed = await Subscription.is_subscribed(db, user_id, channel_id)
     return {"is_subscribed": is_subscribed}
 
@@ -1170,7 +1376,7 @@ async def check_subscription(
 async def get_user_subscriptions(
     skip: int = 0,
     limit: int = 10,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     channels = await Subscription.get_user_subscriptions(db, user_id, skip=skip, limit=limit)

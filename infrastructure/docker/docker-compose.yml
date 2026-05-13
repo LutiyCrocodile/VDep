@@ -189,8 +189,9 @@ services:
       DATABASE_URL: postgresql+asyncpg://user:password@db:5432/video_hosting
       SECRET_KEY: your-secret-key-change-in-production
       INTERNAL_AUTH_TOKEN: internal-secret-token
-      LDAP_SERVER: ldap://your-ldap-server  # Configure for production
+      LDAP_SERVER: ldap://your-ldap-server
       LDAP_BASE_DN: DC=dgi,DC=mos,DC=ru
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-false}
     ports:
       - "8000:8000"
     depends_on:
@@ -307,6 +308,31 @@ services:
       - video_network
     restart: unless-stopped
 
+  # Video hosting frontend
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../../frontend:/app
+      - frontend_node_modules:/app/node_modules
+      - frontend_next:/app/.next
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_VIDEO_API_URL=http://localhost:8001
+      - NEXT_PUBLIC_STREAMING_API_URL=http://localhost:8002
+    command: npm run dev
+    depends_on:
+      - auth-service
+      - video-service
+      - streaming-service
+    networks:
+      - video_network
+    restart: unless-stopped
+
   # Portal frontend (unified entry point)
   portal:
     build:
@@ -322,7 +348,7 @@ services:
       - NODE_ENV=development
       - NEXT_PUBLIC_VIDEO_URL=http://localhost:3000
       - NEXT_PUBLIC_AUTH_URL=http://localhost:8000
-    command: sh -c "npm install && npm run dev"
+    command: npm run dev
     depends_on:
       - auth-service
     networks:
@@ -413,6 +439,8 @@ volumes:
   rabbitmq_data:
   portal_node_modules:
   portal_next:
+  frontend_node_modules:
+  frontend_next:
   minio_data:
   elasticsearch_data:
   nginx_cache:

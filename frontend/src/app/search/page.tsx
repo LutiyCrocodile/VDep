@@ -6,6 +6,7 @@ import Header from '@/components/layout/Header';
 import Sidebar from '@/components/layout/Sidebar';
 import VideoCard from '@/components/video/VideoCard';
 import { searchAPI } from '@/services/api';
+import { useSidebar } from '@/contexts/SidebarContext';
 
 interface Video {
   id: string;
@@ -23,6 +24,7 @@ interface Video {
 export default function SearchPage() {
   const searchParams = useSearchParams();
   const query = searchParams.get('q') || '';
+  const { isCollapsed } = useSidebar();
   
   const [videos, setVideos] = useState<Video[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -69,7 +71,7 @@ export default function SearchPage() {
       <Header />
       <Sidebar />
       
-      <main className="ml-64 pt-14 min-h-screen bg-[#0f0f0f]">
+      <main className={`pt-14 min-h-screen bg-[#0f0f0f] transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
         <div className="p-6">
           <h1 className="text-white text-xl mb-4">
             {query ? `Результаты поиска: "${query}"` : 'Поиск'}

@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/services/auth';
 import { useState, useEffect } from 'react';
 import { channelsAPI } from '@/services/api';
+import { useSidebar } from '@/contexts/SidebarContext';
 
 const menuItems = [
   { icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6', label: 'Главная', href: '/' },
@@ -15,7 +16,6 @@ const getUserMenuItems = (channel: any) => [
   { icon: 'M4 6h16M4 12h16M4 18h16', label: 'Мой канал', href: channel ? `/channel/${channel.handle}` : '/channel' },
   { icon: 'M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z', label: 'Запустить трансляцию', href: '/go-live' },
   { icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', label: 'История', href: '/history' },
-  { icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', label: 'Смотреть позже', href: '/watch-later' },
   { icon: 'M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z', label: 'Понравившиеся', href: '/liked' },
 ];
 
@@ -23,6 +23,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { isAuthenticated, logout } = useAuth();
   const [userChannel, setUserChannel] = useState<any>(null);
+  const { isCollapsed } = useSidebar();
 
   useEffect(() => {
     const fetchChannel = async () => {
@@ -39,8 +40,8 @@ export default function Sidebar() {
   }, [isAuthenticated]);
 
   return (
-    <aside className="fixed left-0 top-14 h-[calc(100vh-56px)] w-64 bg-[#0a0a1a] overflow-y-auto z-40 border-r border-[#27274a]">
-      <div className="py-3">
+    <aside className={`fixed left-0 top-14 h-[calc(100vh-56px)] bg-[#0a0a1a] overflow-y-auto z-40 border-r border-[#27274a] transition-all duration-300 ease-in-out ${isCollapsed ? 'w-0 opacity-0' : 'w-64 opacity-100'}`}>
+      <div className="py-3 whitespace-nowrap">
         <ul className="space-y-1 px-3">
           {menuItems.map((item) => (
             <li key={item.href}>

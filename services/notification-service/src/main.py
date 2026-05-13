@@ -74,6 +74,7 @@ async def get_current_user_id(credentials: HTTPAuthorizationCredentials = Depend
 @app.post("/notifications")
 async def create_notification(
     notification_data: NotificationCreate,
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     notification = await Notification.create(

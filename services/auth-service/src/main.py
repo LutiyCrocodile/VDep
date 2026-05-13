@@ -3,6 +3,7 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 import uvicorn
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
@@ -52,6 +53,7 @@ class UserCreate(BaseModel):
     password: str
     role_id: Optional[str] = None
     full_name: Optional[str] = None
+    is_employee: bool = True
 
 class UserResponse(BaseModel):
     id: str
@@ -59,30 +61,169 @@ class UserResponse(BaseModel):
     email: str
     role: str
     is_active: bool
+    is_employee: bool = True
+    full_name: Optional[str] = None
 
 async def initialize_services(db: AsyncSession):
-    """Initialize default services for multi-service architecture"""
+    """Initialize default services, roles, and permissions for multi-service architecture"""
     from sqlalchemy import text
-    
+
     services = [
         {"slug": "video", "name": "Видеохостинг ДГИ", "description": "Система видеохостинга"},
         {"slug": "messenger", "name": "Мессенджер ДГИ", "description": "Корпоративный мессенджер"},
         {"slug": "dashboard", "name": "Дашборд ДГИ", "description": "Аналитический дашборд"},
         {"slug": "support", "name": "Техподдержка ДГИ", "description": "Система техподдержки"},
     ]
-    
+
+    # Service-specific roles and permissions definitions
+    service_definitions = {
+        "video": {
+            "roles": [
+                {"name": "admin", "description": "Video service administrator"},
+                {"name": "manager", "description": "Video service manager"},
+                {"name": "uploader", "description": "Can upload and manage own videos"},
+                {"name": "viewer", "description": "Can view public videos"}
+            ],
+            "permissions": [
+                {"name": "video:upload", "description": "Can upload videos"},
+                {"name": "video:view_private", "description": "Can view private videos"},
+                {"name": "video:manage_own", "description": "Can manage own videos"},
+                {"name": "video:manage_all", "description": "Can manage all videos"},
+                {"name": "video:stream", "description": "Can create live streams"},
+                {"name": "video:moderate", "description": "Can moderate content"},
+                {"name": "video:audit", "description": "Can view audit logs"}
+            ],
+            "role_permissions": {
+                "admin": ["video:upload", "video:view_private", "video:manage_all", "video:stream", "video:moderate", "video:audit"],
+                "manager": ["video:upload", "video:view_private", "video:stream"],
+                "uploader": ["video:upload", "video:manage_own"]
+            }
+        },
+        "messenger": {
+            "roles": [
+                {"name": "admin", "description": "Messenger administrator"},
+                {"name": "moderator", "description": "Can moderate chats"},
+                {"name": "user", "description": "Regular messenger user"}
+            ],
+            "permissions": [
+                {"name": "messenger:send", "description": "Can send messages"},
+                {"name": "messenger:create_chat", "description": "Can create group chats"},
+                {"name": "messenger:moderate", "description": "Can moderate messages"},
+                {"name": "messenger:admin", "description": "Full messenger administration"}
+            ],
+            "role_permissions": {
+                "admin": ["messenger:send", "messenger:create_chat", "messenger:moderate", "messenger:admin"],
+                "moderator": ["messenger:send", "messenger:create_chat", "messenger:moderate"],
+                "user": ["messenger:send"]
+            }
+        },
+        "dashboard": {
+            "roles": [
+                {"name": "admin", "description": "Dashboard administrator"},
+                {"name": "viewer", "description": "Can view dashboard data"},
+                {"name": "editor", "description": "Can edit dashboard configurations"}
+            ],
+            "permissions": [
+                {"name": "dashboard:view", "description": "Can view dashboard"},
+                {"name": "dashboard:edit", "description": "Can edit dashboard"},
+                {"name": "dashboard:admin", "description": "Full dashboard administration"}
+            ],
+            "role_permissions": {
+                "admin": ["dashboard:view", "dashboard:edit", "dashboard:admin"],
+                "editor": ["dashboard:view", "dashboard:edit"],
+                "viewer": ["dashboard:view"]
+            }
+        },
+        "support": {
+            "roles": [
+                {"name": "admin", "description": "Support administrator"},
+                {"name": "agent", "description": "Support agent"},
+                {"name": "user", "description": "Can submit support tickets"}
+            ],
+            "permissions": [
+                {"name": "support:create_ticket", "description": "Can create support tickets"},
+                {"name": "support:respond", "description": "Can respond to tickets"},
+                {"name": "support:close", "description": "Can close tickets"},
+                {"name": "support:admin", "description": "Full support administration"}
+            ],
+            "role_permissions": {
+                "admin": ["support:create_ticket", "support:respond", "support:close", "support:admin"],
+                "agent": ["support:create_ticket", "support:respond", "support:close"],
+                "user": ["support:create_ticket"]
+            }
+        }
+    }
+
     for svc in services:
         # Check if service exists
         result = await db.execute(
             text("SELECT id FROM services WHERE slug = :slug"),
             {"slug": svc["slug"]}
         )
-        if not result.first():
-            await db.execute(
-                text("INSERT INTO services (id, slug, name, description, is_active) VALUES (gen_random_uuid(), :slug, :name, :description, true)"),
+        service_row = result.first()
+        if not service_row:
+            # Create service
+            result = await db.execute(
+                text("INSERT INTO services (id, slug, name, description, is_active) VALUES (gen_random_uuid(), :slug, :name, :description, true) RETURNING id"),
                 svc
             )
+            service_id = result.first().id
             logger.info(f"Created service: {svc['name']}")
+        else:
+            service_id = service_row.id
+
+        # Initialize service-specific roles and permissions
+        svc_def = service_definitions.get(svc["slug"])
+        if svc_def:
+            # Create permissions
+            for perm in svc_def["permissions"]:
+                result = await db.execute(
+                    text("SELECT id FROM service_permissions WHERE service_id = :service_id AND name = :name"),
+                    {"service_id": service_id, "name": perm["name"]}
+                )
+                if not result.first():
+                    await db.execute(
+                        text("INSERT INTO service_permissions (id, service_id, name, description) VALUES (gen_random_uuid(), :service_id, :name, :description)"),
+                        {"service_id": service_id, **perm}
+                    )
+
+            # Create roles
+            for role in svc_def["roles"]:
+                result = await db.execute(
+                    text("SELECT id FROM service_roles WHERE service_id = :service_id AND name = :name"),
+                    {"service_id": service_id, "name": role["name"]}
+                )
+                role_row = result.first()
+                if not role_row:
+                    result = await db.execute(
+                        text("INSERT INTO service_roles (id, service_id, name, description, is_active) VALUES (gen_random_uuid(), :service_id, :name, :description, true) RETURNING id"),
+                        {"service_id": service_id, **role}
+                    )
+                    role_id = result.first().id
+                else:
+                    role_id = role_row.id
+
+                # Assign permissions to role
+                perm_names = svc_def["role_permissions"].get(role["name"], [])
+                for perm_name in perm_names:
+                    # Get permission id
+                    perm_result = await db.execute(
+                        text("SELECT id FROM service_permissions WHERE service_id = :service_id AND name = :name"),
+                        {"service_id": service_id, "name": perm_name}
+                    )
+                    perm_row = perm_result.first()
+                    if perm_row:
+                        # Check if role-permission exists
+                        rp_result = await db.execute(
+                            text("SELECT 1 FROM service_role_permissions WHERE role_id = :role_id AND permission_id = :perm_id"),
+                            {"role_id": role_id, "perm_id": perm_row.id}
+                        )
+                        if not rp_result.first():
+                            await db.execute(
+                                text("INSERT INTO service_role_permissions (role_id, permission_id) VALUES (:role_id, :perm_id)"),
+                                {"role_id": role_id, "perm_id": perm_row.id}
+                            )
+
     await db.commit()
 
 @asynccontextmanager
@@ -105,7 +246,18 @@ app = FastAPI(title="Auth Service", version="1.0.0", lifespan=lifespan)
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",   # Video frontend
+        "http://localhost:3001",   # Messenger (будет)
+        "http://localhost:3002",   # Portal
+        "http://localhost:3003",   # Dashboard (будет)
+        "http://localhost:3004",   # Support (будет)
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+        "http://127.0.0.1:3002",
+        "http://127.0.0.1:3003",
+        "http://127.0.0.1:3004",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -130,12 +282,13 @@ async def create_access_token(data: dict, db: AsyncSession, expires_delta: Optio
         expire = datetime.utcnow() + timedelta(minutes=15)
     to_encode.update({"exp": expire, "type": "access"})
     
-    # Add service permissions if user_id present
+    # Add service permissions and employee status if user_id present
     if "sub" in to_encode:
         user = await User.get_by_username(db, to_encode["sub"])
         if user:
             services = await user.get_service_permissions(db)
             to_encode["services"] = services
+            to_encode["is_employee"] = getattr(user, 'is_employee', True)
     
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -223,7 +376,17 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
     return current_user
 
 @app.post("/register", response_model=UserResponse)
-async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
+async def register(
+    user_data: UserCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    # Check if registration is allowed
+    if not settings.allow_registration:
+        raise HTTPException(
+            status_code=403,
+            detail="Registration is currently disabled. Please contact administrator."
+        )
+    
     # Check if user exists
     existing_user = await User.get_by_username(db, user_data.username)
     if existing_user:
@@ -247,12 +410,16 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
             role_id = str(default_role.id)
 
     # Create user
-    user = await User.create(db, **{
-        "username": user_data.username,
-        "email": user_data.email,
-        "password_hash": hashed_password,
-        "role_id": role_id
-    })
+    new_user = User(
+        username=user_data.username,
+        email=user_data.email,
+        password_hash=hashed_password,
+        full_name=user_data.full_name,
+        is_active=True,
+        is_employee=user_data.is_employee
+    )
+    user = await db.merge(new_user)
+    await db.commit()
 
     return UserResponse(
         id=str(user.id),
@@ -306,14 +473,48 @@ async def refresh_token(refresh_token: str, db: AsyncSession = Depends(get_db)):
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
+@app.get("/users/search")
+async def search_users(
+    q: str,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Search users by username or email"""
+    search_pattern = f"%{q}%"
+    result = await db.execute(
+        text("""
+            SELECT id, username, email, is_active
+            FROM users
+            WHERE (username ILIKE :pattern OR email ILIKE :pattern)
+            AND is_active = true
+            LIMIT 10
+        """),
+        {"pattern": search_pattern}
+    )
+    rows = result.fetchall()
+    return {
+        "users": [
+            {
+                "id": str(row.id),
+                "username": row.username,
+                "full_name": None,
+                "email": row.email,
+                "is_active": row.is_active
+            }
+            for row in rows
+        ]
+    }
+
 @app.get("/users/me", response_model=UserResponse)
 async def read_users_me(current_user: User = Depends(get_current_active_user)):
     return UserResponse(
         id=str(current_user.id),
         username=current_user.username,
         email=current_user.email,
-        role=current_user.role.name if current_user.role else "none",
-        is_active=current_user.is_active
+        role=current_user.role.name if current_user.role else "user",
+        is_active=current_user.is_active,
+        is_employee=getattr(current_user, 'is_employee', True) or True,
+        full_name=getattr(current_user, 'full_name', None)
     )
 
 @app.get("/users/me/services")
@@ -329,38 +530,6 @@ async def read_user_services(
         "services": services
     }
 
-@app.get("/users/search")
-async def search_users(
-    q: str,
-    current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """Search users by username, full_name or email"""
-    search_pattern = f"%{q}%"
-    result = await db.execute(
-        text("""
-            SELECT id, username, email, full_name, is_active 
-            FROM users 
-            WHERE (username ILIKE :pattern OR full_name ILIKE :pattern OR email ILIKE :pattern)
-            AND is_active = true
-            LIMIT 10
-        """),
-        {"pattern": search_pattern}
-    )
-    rows = result.fetchall()
-    return {
-        "users": [
-            {
-                "id": str(row.id),
-                "username": row.username,
-                "full_name": row.full_name,
-                "email": row.email,
-                "is_active": row.is_active
-            }
-            for row in rows
-        ]
-    }
-
 @app.get("/users")
 async def list_users(
     skip: int = 0,
@@ -371,7 +540,7 @@ async def list_users(
     # Only admin can list all users
     # For simplicity, allow all authenticated users for now
     result = await db.execute(
-        text("SELECT * FROM users LIMIT :limit OFFSET :skip"),
+        text("SELECT id, username, email, is_active, created_at FROM users LIMIT :limit OFFSET :skip"),
         {"limit": limit, "skip": skip}
     )
     rows = result.fetchall()
@@ -380,11 +549,37 @@ async def list_users(
             "id": str(row.id),
             "username": row.username,
             "email": row.email,
+            "full_name": None,
             "is_active": row.is_active,
             "created_at": str(row.created_at)
         }
         for row in rows
     ]
+
+@app.get("/users/search-all")
+async def search_all_users(
+    skip: int = 0,
+    limit: int = 50,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Search all users for granting video access (simplified version)"""
+    result = await db.execute(
+        text("SELECT id, username, email FROM users WHERE is_active = true LIMIT :limit OFFSET :skip"),
+        {"limit": limit, "skip": skip}
+    )
+    rows = result.fetchall()
+    return {
+        "users": [
+            {
+                "id": str(row.id),
+                "username": row.username,
+                "email": row.email,
+                "full_name": None
+            }
+            for row in rows
+        ]
+    }
 
 @app.post("/logout")
 async def logout(response: dict):
@@ -497,6 +692,39 @@ async def list_service_users_internal(
         })
     
     return {"service": service_slug, "users": users}
+
+@app.get("/api/auth/esia/login")
+async def esia_login():
+    """Initiate ESIA (Gosuslugi) OAuth2 login flow - returns authorization URL"""
+    # Production: construct URL with client_id, scope, redirect_uri, state
+    esia_auth_url = (
+        "https://esia.gosuslugi.ru/aas/oauth2/v3/sberid/authorize"
+        "?client_id=YOUR_ESIA_CLIENT_ID"
+        "&redirect_uri=http://localhost:3002/auth/esia/callback"
+        "&scope=openid fullname snils"
+        "&response_type=code"
+    )
+    return {
+        "auth_url": esia_auth_url,
+        "message": "ESIA integration prepared. Configure ESIA_CLIENT_ID and ESIA_PRIVATE_KEY in production.",
+        "status": "ready"
+    }
+
+@app.post("/api/auth/esia/callback")
+async def esia_callback(code: str, state: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+    """Handle ESIA OAuth2 callback - exchange authorization code for access token"""
+    # Production implementation:
+    # 1. Exchange 'code' for ESIA access token using private key JWT
+    # 2. Fetch user info (SNILS, fullName, email) from ESIA /rs/prns/
+    # 3. Find or create user by esia_id / SNILS
+    # 4. Issue internal JWT tokens for portal/video services
+    return {
+        "message": "ESIA callback endpoint prepared. Implement token exchange and user linking in production.",
+        "code": code,
+        "state": state,
+        "integration_status": "prepared",
+        "next_step": "Exchange code for ESIA token, then call /rs/prns/ for user info"
+    }
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

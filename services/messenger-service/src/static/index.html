@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мессенджер ДГИ</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .icon {
+            font-size: 64px;
+            margin-bottom: 10px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            background: #10b981;
+            color: white;
+            border-radius: 12px;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+        .info {
+            background: #f3f4f6;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+        .info h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        .info p {
+            color: #666;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .token-info {
+            background: #fef3c7;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            font-size: 12px;
+            color: #92400e;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #6366f1;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+        .btn:hover { background: #4f46e5; }
+        .logout-btn {
+            background: #ef4444;
+        }
+        .logout-btn:hover { background: #dc2626; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="icon">💬</div>
+            <h1>Мессенджер ДГИ</h1>
+            <p class="subtitle">Защищенный корпоративный мессенджер</p>
+            <span class="status" id="status">Проверка авторизации...</span>
+        </div>
+
+        <div class="info">
+            <h3>📋 Доступные функции:</h3>
+            <p>• Создание личных и групповых чатов<br>
+               • Отправка сообщений в реальном времени<br>
+               • Голосовые и видео-звонки<br>
+               • Обмен файлами с шифрованием</p>
+        </div>
+
+        <div class="token-info">
+            <strong>Статус токена:</strong> <span id="token-status">...</span><br>
+            <strong>Права доступа:</strong> messenger:*
+        </div>
+
+        <div style="text-align: center; margin-top: 30px;">
+            <a href="http://localhost:3002" class="btn">← Вернуться на портал</a>
+            <button onclick="logout()" class="btn logout-btn">Выйти</button>
+        </div>
+    </div>
+
+    <script>
+        const TOKEN_KEY = 'access_token';
+        const REFRESH_KEY = 'refresh_token';
+        
+        async function checkAuth() {
+            const token = localStorage.getItem(TOKEN_KEY);
+            const refresh = localStorage.getItem(REFRESH_KEY);
+            const statusEl = document.getElementById('status');
+            const tokenStatusEl = document.getElementById('token-status');
+            
+            // If no tokens in localStorage, try to get from URL
+            if (!token || !refresh) {
+                const urlParams = new URLSearchParams(window.location.search);
+                const accessToken = urlParams.get('access_token');
+                const refreshToken = urlParams.get('refresh_token');
+                
+                if (accessToken && refreshToken) {
+                    localStorage.setItem(TOKEN_KEY, accessToken);
+                    localStorage.setItem(REFRESH_KEY, refreshToken);
+                    // Clean URL
+                    window.history.replaceState({}, '', window.location.pathname);
+                }
+            }
+            
+            const currentToken = localStorage.getItem(TOKEN_KEY);
+            if (!currentToken) {
+                statusEl.textContent = 'Не авторизован';
+                statusEl.style.background = '#ef4444';
+                tokenStatusEl.textContent = 'Отсутствует';
+                return;
+            }
+            
+            try {
+                // Decode token
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                const exp = new Date(payload.exp * 1000);
+                const now = new Date();
+                
+                if (exp < now) {
+                    // Token expired, try refresh
+                    await refreshToken();
+                }
+                
+                // Verify with backend
+                const res = await fetch('http://localhost:3001/api/chats', {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                
+                if (res.ok) {
+                    statusEl.textContent = 'Авторизован';
+                    statusEl.style.background = '#10b981';
+                    tokenStatusEl.textContent = 'Действителен';
+                } else {
+                    throw new Error('Invalid token');
+                }
+            } catch (err) {
+                statusEl.textContent = 'Ошибка авторизации';
+                statusEl.style.background = '#ef4444';
+                tokenStatusEl.textContent = 'Недействителен';
+                localStorage.removeItem(TOKEN_KEY);
+                localStorage.removeItem(REFRESH_KEY);
+            }
+        }
+        
+        async function refreshToken() {
+            const refresh = localStorage.getItem(REFRESH_KEY);
+            if (!refresh) return;
+            
+            try {
+                const res = await fetch('http://localhost:8000/refresh', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ refresh_token: refresh })
+                });
+                
+                if (res.ok) {
+                    const data = await res.json();
+                    localStorage.setItem(TOKEN_KEY, data.access_token);
+                    localStorage.setItem(REFRESH_KEY, data.refresh_token);
+                }
+            } catch (err) {
+                console.error('Refresh failed:', err);
+            }
+        }
+        
+        function logout() {
+            localStorage.removeItem(TOKEN_KEY);
+            localStorage.removeItem(REFRESH_KEY);
+            window.location.href = 'http://localhost:3002';
+        }
+        
+        checkAuth();
+    </script>
+</body>
+</html>

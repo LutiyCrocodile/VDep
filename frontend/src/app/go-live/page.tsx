@@ -78,11 +78,12 @@ export default function GoLivePage() {
       setDescription('');
     } catch (err: any) {
       const errorDetail = err.response?.data?.detail || '';
-      if (err.response?.status === 403 && errorDetail.includes('channel')) {
+      const errorMessage = typeof errorDetail === 'string' ? errorDetail : JSON.stringify(errorDetail);
+      if (err.response?.status === 403 && errorMessage.includes('channel')) {
         setError('У вас нет канала. Создайте канал перед запуском трансляции.');
         setUserChannel(null);
       } else {
-        setError(errorDetail || 'Ошибка создания трансляции');
+        setError(errorMessage || 'Ошибка создания трансляции');
       }
     } finally {
       setIsCreating(false);
@@ -95,7 +96,9 @@ export default function GoLivePage() {
       await streamsAPI.startStream(currentStream.id);
       setCurrentStream({ ...currentStream, is_live: true });
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Ошибка запуска трансляции');
+      const errorDetail = err.response?.data?.detail || 'Ошибка запуска трансляции';
+      const errorMessage = typeof errorDetail === 'string' ? errorDetail : JSON.stringify(errorDetail);
+      setError(errorMessage);
     }
   };
 
@@ -105,7 +108,9 @@ export default function GoLivePage() {
       await streamsAPI.stopStream(currentStream.id);
       setCurrentStream({ ...currentStream, is_live: false });
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Ошибка остановки трансляции');
+      const errorDetail = err.response?.data?.detail || 'Ошибка остановки трансляции';
+      const errorMessage = typeof errorDetail === 'string' ? errorDetail : JSON.stringify(errorDetail);
+      setError(errorMessage);
     }
   };
 
@@ -276,7 +281,7 @@ export default function GoLivePage() {
                 </div>
                 {error && (
                   <div className="bg-red-900/30 border border-red-500 rounded-lg p-4">
-                    <p className="text-red-300">{error}</p>
+                    <p className="text-red-300">{typeof error === 'string' ? error : JSON.stringify(error)}</p>
                   </div>
                 )}
                 <button
