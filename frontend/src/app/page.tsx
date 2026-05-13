@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import Header from '@/components/layout/Header';
 import Sidebar from '@/components/layout/Sidebar';
 import VideoCard from '@/components/video/VideoCard';
-import { videosAPI, searchAPI } from '@/services/api';
+import { videosAPI, searchAPI, streamsAPI } from '@/services/api';
+import { useAuth } from '@/services/auth';
 import { useSidebar } from '@/contexts/SidebarContext';
 
 interface Video {
@@ -29,15 +31,51 @@ const CLASSIFICATION_FILTERS = [
   { value: 'restricted', label: 'Личные', color: 'bg-red-600' },
 ];
 
+interface LiveStreamCard {
+  id: string;
+  title: string;
+  is_live: boolean;
+  owner_username?: string;
+  created_at?: string;
+}
+
 export default function Home() {
   const searchParams = useSearchParams();
   const searchQuery = searchParams.get('q') || '';
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [videos, setVideos] = useState<Video[]>([]);
   const [filteredVideos, setFilteredVideos] = useState<Video[]>([]);
+  const [liveStreams, setLiveStreams] = useState<LiveStreamCard[]>([]);
+  const [liveLoading, setLiveLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeClassification, setActiveClassification] = useState('all');
   const { isCollapsed } = useSidebar();
+
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || searchQuery.trim()) {
+      setLiveStreams([]);
+      return;
+    }
+    let cancelled = false;
+    const loadLive = async () => {
+      setLiveLoading(true);
+      try {
+        const data = await streamsAPI.getLiveStreams();
+        if (!cancelled) setLiveStreams(data.streams || []);
+      } catch {
+        if (!cancelled) setLiveStreams([]);
+      } finally {
+        if (!cancelled) setLiveLoading(false);
+      }
+    };
+    loadLive();
+    const t = setInterval(loadLive, 20000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [authLoading, isAuthenticated, searchQuery]);
 
   useEffect(() => {
     const fetchVideos = async () => {
@@ -153,6 +191,11 @@ export default function Home() {
     setFilteredVideos(result);
   }, [activeClassification, videos]);
 
+  const formatLiveDate = (dateString?: string) => {
+    if (!dateString) return '';
+    return new Date(dateString).toLocaleString('ru-RU');
+  };
+
   return (
     <div className="min-h-screen bg-[#0f0f0f]">
       <Header />
@@ -160,6 +203,58 @@ export default function Home() {
       
       <main className={`pt-14 min-h-screen bg-[#0f0f0f] transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
         <div className="p-6">
+          {!searchQuery.trim() && isAuthenticated && (
+            <section className="mb-10">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-white text-xl font-semibold flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                  Прямые эфиры
+                </h2>
+                <Link href="/streams" className="text-sm text-indigo-400 hover:text-indigo-300">
+                  Все трансляции →
+                </Link>
+              </div>
+              {liveLoading && liveStreams.length === 0 ? (
+                <div className="h-12 flex items-center text-gray-500 text-sm">Загрузка эфиров…</div>
+              ) : liveStreams.length === 0 ? (
+                <p className="text-gray-500 text-sm">Сейчас нет доступных вам прямых эфиров.</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {liveStreams.map((s) => (
+                    <Link
+                      key={s.id}
+                      href={`/stream/${s.id}`}
+                      className="block rounded-xl border border-red-900/50 bg-gradient-to-br from-[#1a0505] to-[#0f0f0f] p-4 hover:border-red-500/60 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 text-red-400 text-xs font-semibold uppercase tracking-wide mb-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                        Live
+                      </div>
+                      <h3 className="text-white font-medium line-clamp-2">{s.title}</h3>
+                      {s.owner_username && (
+                        <p className="text-gray-400 text-sm mt-2">Ведущий: {s.owner_username}</p>
+                      )}
+                      {s.created_at && (
+                        <p className="text-gray-600 text-xs mt-2">{formatLiveDate(s.created_at)}</p>
+                      )}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          {!searchQuery.trim() && !authLoading && !isAuthenticated && (
+            <section className="mb-10 rounded-xl border border-gray-800 bg-[#181818] p-4">
+              <p className="text-gray-400 text-sm">
+                <Link href="/login" className="text-indigo-400 hover:underline">
+                  Войдите
+                </Link>
+                , чтобы видеть прямые эфиры сотрудников ДГИ на главной.
+              </p>
+            </section>
+          )}
+
           {/* Classification Filters */}
           <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
             {CLASSIFICATION_FILTERS.map((filter) => (

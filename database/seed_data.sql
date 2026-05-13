@@ -74,57 +74,59 @@ INSERT INTO service_permissions (id, service_id, name, description) SELECT gen_r
 -- ============================================
 -- 5. TEST USERS
 -- ============================================
--- Passwords are hashed (bcrypt): "admin123"
--- To create more users, use: python -c "from passlib.context import CryptContext; print(CryptContext(['bcrypt']).hash('password'))"
-
+-- Passwords: bcrypt for "admin123" (regenerate: docker run --rm -v ./scripts:/scripts python:3.11-slim bash -c "pip install -q bcrypt && python /scripts/gen_bcrypt.py")
 -- Admin user (full access to all services)
 INSERT INTO users (id, username, email, password_hash, is_employee, is_active) VALUES
   (gen_random_uuid(), 'admin', 'admin@dgi.mos.ru',
-   '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYzS5cLPXKe',
+   '$2b$12$ef3qJ1ml214zOLcjKEhYJ.H84nDLuNxDTwPUQ6rwvd4JfU.nmRZya',
    true, true)
 ON CONFLICT (username) DO NOTHING;
 
 -- Video Admin
 INSERT INTO users (id, username, email, password_hash, is_employee, is_active) VALUES
   (gen_random_uuid(), 'video_admin', 'video.admin@dgi.mos.ru',
-   '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYzS5cLPXKe',
+   '$2b$12$ef3qJ1ml214zOLcjKEhYJ.H84nDLuNxDTwPUQ6rwvd4JfU.nmRZya',
    true, true)
 ON CONFLICT (username) DO NOTHING;
 
 -- Messenger User
 INSERT INTO users (id, username, email, password_hash, is_employee, is_active) VALUES
   (gen_random_uuid(), 'messenger_user', 'messenger.user@dgi.mos.ru',
-   '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYzS5cLPXKe',
+   '$2b$12$ef3qJ1ml214zOLcjKEhYJ.H84nDLuNxDTwPUQ6rwvd4JfU.nmRZya',
    true, true)
 ON CONFLICT (username) DO NOTHING;
 
 -- Dashboard Analyst
 INSERT INTO users (id, username, email, password_hash, is_employee, is_active) VALUES
   (gen_random_uuid(), 'analyst', 'analyst@dgi.mos.ru',
-   '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYzS5cLPXKe',
+   '$2b$12$ef3qJ1ml214zOLcjKEhYJ.H84nDLuNxDTwPUQ6rwvd4JfU.nmRZya',
    true, true)
 ON CONFLICT (username) DO NOTHING;
 
 -- Support Agent
 INSERT INTO users (id, username, email, password_hash, is_employee, is_active) VALUES
   (gen_random_uuid(), 'support_agent', 'support@dgi.mos.ru',
-   '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYzS5cLPXKe',
+   '$2b$12$ef3qJ1ml214zOLcjKEhYJ.H84nDLuNxDTwPUQ6rwvd4JfU.nmRZya',
    true, true)
 ON CONFLICT (username) DO NOTHING;
 
 -- Standard employee
 INSERT INTO users (id, username, email, password_hash, is_employee, is_active) VALUES
   (gen_random_uuid(), 'employee', 'employee@dgi.mos.ru',
-   '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYzS5cLPXKe',
+   '$2b$12$ef3qJ1ml214zOLcjKEhYJ.H84nDLuNxDTwPUQ6rwvd4JfU.nmRZya',
    true, true)
 ON CONFLICT (username) DO NOTHING;
 
 -- External user (non-employee, limited access)
 INSERT INTO users (id, username, email, password_hash, is_employee, is_active) VALUES
   (gen_random_uuid(), 'external', 'external@example.com',
-   '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYzS5cLPXKe',
+   '$2b$12$ef3qJ1ml214zOLcjKEhYJ.H84nDLuNxDTwPUQ6rwvd4JfU.nmRZya',
    false, true)
 ON CONFLICT (username) DO NOTHING;
+
+-- Сброс пароля тестовых пользователей на admin123 (если строки уже были без пароля или со старым хешем)
+UPDATE users SET password_hash = '$2b$12$ef3qJ1ml214zOLcjKEhYJ.H84nDLuNxDTwPUQ6rwvd4JfU.nmRZya'
+WHERE username IN ('admin', 'video_admin', 'messenger_user', 'analyst', 'support_agent', 'employee', 'external');
 
 -- ============================================
 -- 6. USER SERVICE ROLES (Assign permissions)

@@ -187,10 +187,12 @@ services:
       dockerfile: Dockerfile
     environment:
       DATABASE_URL: postgresql+asyncpg://user:password@db:5432/video_hosting
-      SECRET_KEY: your-secret-key-change-in-production
-      INTERNAL_AUTH_TOKEN: internal-secret-token
-      LDAP_SERVER: ldap://your-ldap-server
-      LDAP_BASE_DN: DC=dgi,DC=mos,DC=ru
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-internal-secret-token}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      # Пусто = только локальные пароли из БД (см. database/seed_data.sql). Для LDAP задайте реальный URL в .env.
+      LDAP_SERVER: ${LDAP_SERVER:-}
+      LDAP_BASE_DN: ${LDAP_BASE_DN:-DC=dgi,DC=mos,DC=ru}
       ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-false}
     ports:
       - "8000:8000"
@@ -220,6 +222,8 @@ services:
       MINIO_SECRET_KEY: minioadmin
       MINIO_BUCKET: videos
       MINIO_SECURE: "false"
+      # Хост:порт или полный URL MinIO для ссылок в JSON (браузер), не minio:9000
+      MINIO_EXTERNAL_ENDPOINT: ${MINIO_EXTERNAL_ENDPOINT:-localhost:9000}
       AUTH_SERVICE_URL: http://auth-service:8000
       INTERNAL_AUTH_TOKEN: internal-secret-token
       REDIS_URL: redis://redis:6379/0
@@ -277,6 +281,19 @@ services:
       - video_network
     restart: unless-stopped
 
+  # MediaMTX: RTMP ingest + HLS + recordings (shared with streaming-service)
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    ports:
+      - "1935:1935"
+      - "8888:8888"
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+      - recordings_data:/recordings
+    networks:
+      - video_network
+    restart: unless-stopped
+
   # Streaming service
   streaming-service:
     build:
@@ -289,9 +306,14 @@ services:
       NOTIFICATION_SERVICE_URL: http://notification-service:8003
       VIDEO_SERVICE_URL: http://video-service:8001
       REDIS_URL: redis://redis:6379/0
+      PUBLIC_HLS_BASE: ${PUBLIC_HLS_BASE:-http://localhost:8888}
+      PUBLIC_RTMP_HOST: ${PUBLIC_RTMP_HOST:-localhost}
+      PUBLIC_RTMP_PORT: "1935"
+      RECORDINGS_PATH: /recordings
     ports:
       - "8002:8002"
-      - "1935:1935"
+    volumes:
+      - recordings_data:/recordings
     depends_on:
       db:
         condition: service_healthy
@@ -299,6 +321,8 @@ services:
         condition: service_healthy
       auth-service:
         condition: service_healthy
+      mediamtx:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
@@ -324,11 +348,16 @@ services:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
       - NEXT_PUBLIC_VIDEO_API_URL=http://localhost:8001
       - NEXT_PUBLIC_STREAMING_API_URL=http://localhost:8002
+      - NEXT_PUBLIC_HLS_PUBLIC_BASE=http://localhost:8888
+      - NEXT_PUBLIC_RTMP_HOST=localhost
+      - NEXT_PUBLIC_RTMP_PORT=1935
+      - NEXT_PUBLIC_RTMP_APP=live
     command: npm run dev
     depends_on:
       - auth-service
       - video-service
       - streaming-service
+      - mediamtx
     networks:
       - video_network
     restart: unless-stopped
@@ -442,6 +471,7 @@ volumes:
   minio_cache:
   prometheus_data:
   grafana_data:
+  recordings_data:
 
 networks:
   video_network:

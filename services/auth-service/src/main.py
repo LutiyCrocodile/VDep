@@ -96,7 +96,8 @@ async def initialize_services(db: AsyncSession):
             "role_permissions": {
                 "admin": ["video:upload", "video:view_private", "video:manage_all", "video:stream", "video:moderate", "video:audit"],
                 "manager": ["video:upload", "video:view_private", "video:stream"],
-                "uploader": ["video:upload", "video:manage_own"]
+                "uploader": ["video:upload", "video:manage_own"],
+                "viewer": ["video:stream"],
             }
         },
         "messenger": {
@@ -244,28 +245,44 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Auth Service", version="1.0.0", lifespan=lifespan)
 
 # CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",   # Video frontend
-        "http://localhost:3001",   # Messenger (будет)
-        "http://localhost:3002",   # Portal
-        "http://localhost:3003",   # Dashboard (будет)
-        "http://localhost:3004",   # Support (будет)
+def _cors_allow_origins() -> list:
+    raw = (settings.cors_origins or "").strip()
+    if raw:
+        return [o.strip() for o in raw.split(",") if o.strip()]
+    return [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:3002",
+        "http://localhost:3003",
+        "http://localhost:3004",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3001",
         "http://127.0.0.1:3002",
         "http://127.0.0.1:3003",
         "http://127.0.0.1:3004",
-    ],
+    ]
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_allow_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    password_bytes = plain_password.encode('utf-8')[:72]
-    return bcrypt.checkpw(password_bytes, hashed_password.encode('utf-8'))
+    if not hashed_password:
+        return False
+    password_bytes = plain_password.encode("utf-8")[:72]
+    try:
+        if isinstance(hashed_password, bytes):
+            hashed_bytes = hashed_password
+        else:
+            hashed_bytes = str(hashed_password).encode("utf-8")
+        return bcrypt.checkpw(password_bytes, hashed_bytes)
+    except (ValueError, TypeError):
+        return False
 
 def get_password_hash(password: str) -> str:
     password_bytes = password.encode('utf-8')[:72]
@@ -286,9 +303,13 @@ async def create_access_token(data: dict, db: AsyncSession, expires_delta: Optio
     if "sub" in to_encode:
         user = await User.get_by_username(db, to_encode["sub"])
         if user:
-            services = await user.get_service_permissions(db)
-            to_encode["services"] = services
-            to_encode["is_employee"] = getattr(user, 'is_employee', True)
+            try:
+                services = await user.get_service_permissions(db)
+                to_encode["services"] = services
+            except Exception:
+                logger.exception("get_service_permissions failed for user %s; token without services", user.username)
+                to_encode["services"] = {}
+            to_encode["is_employee"] = getattr(user, "is_employee", True)
     
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -306,12 +327,12 @@ async def authenticate_user(db: AsyncSession, username: str, password: str):
     if user and user.password_hash and verify_password(password, user.password_hash):
         return user
 
-    # If not found locally, try LDAP
-    if user is None and LDAP_SERVER:
+    # If not found locally, try LDAP (only when LDAP_SERVER задан в окружении)
+    if user is None and LDAP_SERVER and LDAP_SERVER.strip():
         ldap_user = await authenticate_ldap(username, password)
         if ldap_user:
             # Create user in local DB if authenticated via LDAP
-            role = await Role.get_by_name(db, "employee")  # Default role
+            role = await Role.get_by_name(db, "user")  # глобальная роль из seed / 005_bootstrap
             user_data = {
                 "username": username,
                 "email": f"{username}@dgi.mos.ru",  # Assume domain
@@ -597,6 +618,21 @@ async def metrics():
     return {"status": "ok", "service": "auth-service"}
 
 # Internal endpoints for inter-service communication
+@app.get("/internal/users/{user_id}/profile-mini")
+async def internal_user_profile_mini(
+    user_id: str,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db),
+):
+    """Минимальный профиль (username) для списков эфиров и других межсервисных сценариев."""
+    if credentials.credentials != settings.internal_auth_token:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    user = await User.get_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"id": str(user.id), "username": user.username}
+
+
 @app.get("/internal/users/{user_id}/permissions")
 async def get_user_permissions_internal(
     user_id: str,
@@ -608,7 +644,7 @@ async def get_user_permissions_internal(
     if credentials.credentials != settings.internal_auth_token:
         raise HTTPException(status_code=403, detail="Forbidden")
     
-    user = await User.get_by_username(db, user_id)
+    user = await User.get_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
@@ -639,7 +675,7 @@ async def check_user_service_access_internal(
     if credentials.credentials != settings.internal_auth_token:
         raise HTTPException(status_code=403, detail="Forbidden")
     
-    user = await User.get_by_username(db, user_id)
+    user = await User.get_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     

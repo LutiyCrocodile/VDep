@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     # Registration control
     allow_registration: bool = os.getenv("ALLOW_REGISTRATION", "false").lower() == "true"
 
+    # CORS: через запятую публичные origin фронтов (прод). Пусто — см. список по умолчанию в main.py
+    cors_origins: str = os.getenv("CORS_ORIGINS", "")
+
     class Config:
         env_file = ".env"
 

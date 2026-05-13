@@ -29,25 +29,7 @@ export default function StreamsPage() {
         const data = await streamsAPI.getLiveStreams();
         setStreams(data.streams || []);
       } catch {
-        // Mock data
-        setStreams([
-          {
-            id: '1',
-            title: 'Прямая трансляция: Совещание ДГИ',
-            is_live: true,
-            created_at: new Date().toISOString(),
-            owner_username: 'Администратор',
-            viewers_count: 45,
-          },
-          {
-            id: '2',
-            title: 'Обучение новых сотрудников',
-            is_live: true,
-            created_at: new Date(Date.now() - 3600000).toISOString(),
-            owner_username: 'HR отдел',
-            viewers_count: 12,
-          },
-        ]);
+        setStreams([]);
       } finally {
         setIsLoading(false);
       }
@@ -71,7 +53,7 @@ export default function StreamsPage() {
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-2xl font-bold text-white">Прямые трансляции</h1>
             <Link
-              href="/streams/create"
+              href="/go-live"
               className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
             >
               Начать трансляцию

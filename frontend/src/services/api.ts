@@ -337,6 +337,11 @@ export const streamsAPI = {
     return response.data;
   },
 
+  getMyActiveStream: async () => {
+    const response = await streamingApiClient.get('/streams/my-active');
+    return response.data;
+  },
+
   getLiveStreams: async () => {
     const response = await streamingApiClient.get('/streams/live');
     return response.data;
@@ -347,7 +352,12 @@ export const streamsAPI = {
     return response.data;
   },
 
-  createStream: async (data: { title: string; description?: string; is_private?: boolean }) => {
+  createStream: async (data: {
+    title: string;
+    description?: string;
+    visibility: 'dgi_employees' | 'private';
+    allowed_user_ids?: string[];
+  }) => {
     const response = await streamingApiClient.post('/streams', data);
     return response.data;
   },
@@ -356,14 +366,16 @@ export const streamsAPI = {
     const response = await streamingApiClient.put(`/streams/${streamId}/start`);
     return response.data;
   },
-  
+
   stopStream: async (streamId: string) => {
     const response = await streamingApiClient.put(`/streams/${streamId}/stop`);
     return response.data;
   },
 
-  getStreamUrl: (streamId: string) => {
-    return `${STREAMING_API_URL}/hls/${streamId}/index.m3u8`;
+  getStreamUrl: (hlsUrlFromApi?: string) => {
+    if (hlsUrlFromApi) return hlsUrlFromApi;
+    const base = process.env.NEXT_PUBLIC_HLS_PUBLIC_BASE || 'http://localhost:8888';
+    return `${base}`;
   },
 };
 

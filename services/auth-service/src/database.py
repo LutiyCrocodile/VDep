@@ -104,6 +104,7 @@ class User(Base):
     password_hash = Column(String(255))
     ldap_dn = Column(String(255))
     esia_id = Column(String(255))
+    full_name = Column(String(255), nullable=True)
     role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id"), nullable=True)
     is_active = Column(Boolean, default=True)
     is_employee = Column(Boolean, default=True)
@@ -111,14 +112,39 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
     @classmethod
+    def _mapped_column_keys(cls) -> set:
+        """Колонки ORM-модели (строка БД может содержать лишние поля после ручных миграций)."""
+        return {c.key for c in cls.__table__.columns}
+
+    @classmethod
+    def _from_db_row(cls, row) -> "User":
+        data = row._asdict()
+        role_name = data.pop("role_name", None)
+        keys = cls._mapped_column_keys()
+        user = cls(**{k: v for k, v in data.items() if k in keys})
+        user.role = Role(name=role_name) if role_name else None
+        return user
+
+    @classmethod
+    async def get_by_id(cls, db: AsyncSession, user_id: str):
+        result = await db.execute(
+            text(
+                "SELECT u.*, r.name as role_name FROM users u "
+                "LEFT JOIN roles r ON u.role_id = r.id WHERE u.id = CAST(:uid AS uuid)"
+            ),
+            {"uid": str(user_id)},
+        )
+        row = result.first()
+        if row:
+            return cls._from_db_row(row)
+        return None
+
+    @classmethod
     async def get_by_username(cls, db: AsyncSession, username: str):
         result = await db.execute(text("SELECT u.*, r.name as role_name FROM users u LEFT JOIN roles r ON u.role_id = r.id WHERE u.username = :username"), {"username": username})
         row = result.first()
         if row:
-            user_dict = row._asdict()
-            user = cls(**{k: v for k, v in user_dict.items() if k != 'role_name'})
-            user.role = Role(name=user_dict['role_name']) if user_dict['role_name'] else None
-            return user
+            return cls._from_db_row(row)
         return None
 
     @classmethod
@@ -126,10 +152,7 @@ class User(Base):
         result = await db.execute(text("SELECT u.*, r.name as role_name FROM users u LEFT JOIN roles r ON u.role_id = r.id WHERE u.email = :email"), {"email": email})
         row = result.first()
         if row:
-            user_dict = row._asdict()
-            user = cls(**{k: v for k, v in user_dict.items() if k != 'role_name'})
-            user.role = Role(name=user_dict['role_name']) if user_dict['role_name'] else None
-            return user
+            return cls._from_db_row(row)
         return None
 
     @classmethod
@@ -181,11 +204,16 @@ class User(Base):
         services = {}
         for row in result.fetchall():
             service_slug = row.service_slug
+            perms = [p for p in (row.permissions or []) if p is not None]
             if service_slug not in services:
                 services[service_slug] = {
                     "role": row.role_name,
-                    "perms": [p for p in (row.permissions or []) if p is not None]
+                    "perms": perms,
                 }
+            else:
+                cur = services[service_slug]
+                merged = list(dict.fromkeys(cur["perms"] + perms))
+                services[service_slug] = {"role": cur["role"], "perms": merged}
         return services
 
 # Database engine

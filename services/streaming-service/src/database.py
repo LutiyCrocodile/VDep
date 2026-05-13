@@ -1,13 +1,15 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, UUID, text
-from typing import AsyncGenerator
+from typing import AsyncGenerator, List, Optional
 import uuid
 from datetime import datetime
 from .config import settings
 
+
 class Base(DeclarativeBase):
     pass
+
 
 class User(Base):
     __tablename__ = "users"
@@ -15,6 +17,7 @@ class User(Base):
     id = Column(UUID(as_uuid=True), primary_key=True)
     username = Column(String(255), nullable=False)
     email = Column(String(255), nullable=False)
+
 
 class Stream(Base):
     __tablename__ = "streams"
@@ -31,29 +34,47 @@ class Stream(Base):
     archived_video_id = Column(UUID(as_uuid=True))
     is_private = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    visibility = Column(String(32), default="dgi_employees")
+    mediamtx_path = Column(String(255))
+    recording_dir = Column(String(512))
 
     @classmethod
     async def create(cls, db: AsyncSession, **kwargs):
         stream_id = uuid.uuid4()
+        visibility = kwargs.get("visibility", "dgi_employees")
+        is_private = visibility == "private"
         await db.execute(
-            text("""
-                INSERT INTO streams (id, title, description, user_id, rtmp_key, hls_url, is_live, start_time, end_time, archived_video_id, is_private, created_at)
-                VALUES (:id, :title, :description, :user_id, :rtmp_key, :hls_url, :is_live, :start_time, :end_time, :archived_video_id, :is_private, :created_at)
-            """),
+            text(
+                """
+                INSERT INTO streams (
+                    id, title, description, user_id, rtmp_key, hls_url, is_live,
+                    start_time, end_time, archived_video_id, is_private, created_at,
+                    visibility, mediamtx_path, recording_dir
+                )
+                VALUES (
+                    :id, :title, :description, :user_id, :rtmp_key, :hls_url, :is_live,
+                    :start_time, :end_time, :archived_video_id, :is_private, :created_at,
+                    :visibility, :mediamtx_path, :recording_dir
+                )
+                """
+            ),
             {
                 "id": stream_id,
-                "title": kwargs['title'],
-                "description": kwargs.get('description'),
-                "user_id": kwargs['user_id'],
-                "rtmp_key": kwargs['rtmp_key'],
-                "hls_url": kwargs.get('hls_url'),
-                "is_live": kwargs.get('is_live', False),
-                "start_time": kwargs.get('start_time'),
-                "end_time": kwargs.get('end_time'),
-                "archived_video_id": kwargs.get('archived_video_id'),
-                "is_private": kwargs.get('is_private', False),
-                "created_at": kwargs.get('created_at', datetime.utcnow())
-            }
+                "title": kwargs["title"],
+                "description": kwargs.get("description"),
+                "user_id": kwargs["user_id"],
+                "rtmp_key": kwargs["rtmp_key"],
+                "hls_url": kwargs.get("hls_url"),
+                "is_live": kwargs.get("is_live", False),
+                "start_time": kwargs.get("start_time"),
+                "end_time": kwargs.get("end_time"),
+                "archived_video_id": kwargs.get("archived_video_id"),
+                "is_private": is_private,
+                "created_at": kwargs.get("created_at", datetime.utcnow()),
+                "visibility": visibility,
+                "mediamtx_path": kwargs.get("mediamtx_path"),
+                "recording_dir": kwargs.get("recording_dir"),
+            },
         )
         await db.commit()
         return await cls.get_by_id(db, str(stream_id))
@@ -67,18 +88,18 @@ class Stream(Base):
         return None
 
     @classmethod
-    async def get_all(cls, db: AsyncSession, user_id: str = None):
+    async def get_all(cls, db: AsyncSession, user_id: Optional[str] = None):
         if user_id:
             query = """
                 SELECT * FROM streams
-                WHERE user_id = :user_id OR is_private = false
+                WHERE user_id = CAST(:user_id AS uuid)
                 ORDER BY created_at DESC
             """
             result = await db.execute(text(query), {"user_id": user_id})
         else:
             query = """
                 SELECT * FROM streams
-                WHERE is_private = false
+                WHERE COALESCE(visibility, 'dgi_employees') != 'private'
                 ORDER BY created_at DESC
             """
             result = await db.execute(text(query))
@@ -87,7 +108,35 @@ class Stream(Base):
         return [cls(**row._asdict()) for row in rows]
 
     @classmethod
-    async def update_status(cls, db: AsyncSession, stream_id: str, is_live: bool = None, start_time: datetime = None, end_time: datetime = None, hls_url: str = None, archived_video_id: str = None):
+    async def get_latest_for_owner(cls, db: AsyncSession, owner_id: str):
+        result = await db.execute(
+            text(
+                """
+                SELECT * FROM streams
+                WHERE user_id = CAST(:uid AS uuid)
+                ORDER BY created_at DESC
+                LIMIT 1
+                """
+            ),
+            {"uid": owner_id},
+        )
+        row = result.first()
+        if row:
+            return cls(**row._asdict())
+        return None
+
+    @classmethod
+    async def update_status(
+        cls,
+        db: AsyncSession,
+        stream_id: str,
+        is_live: bool = None,
+        start_time: datetime = None,
+        end_time: datetime = None,
+        hls_url: str = None,
+        archived_video_id: str = None,
+        recording_dir: str = None,
+    ):
         update_fields = []
         params = {"id": stream_id}
 
@@ -111,6 +160,10 @@ class Stream(Base):
             update_fields.append("archived_video_id = :archived_video_id")
             params["archived_video_id"] = archived_video_id
 
+        if recording_dir is not None:
+            update_fields.append("recording_dir = :recording_dir")
+            params["recording_dir"] = recording_dir
+
         if update_fields:
             query = f"UPDATE streams SET {', '.join(update_fields)} WHERE id = :id"
             await db.execute(text(query), params)
@@ -126,17 +179,62 @@ class Stream(Base):
 
     @classmethod
     async def get_live_streams(cls, db: AsyncSession):
-        result = await db.execute(text("SELECT * FROM streams WHERE is_live = true ORDER BY start_time DESC"))
+        result = await db.execute(
+            text("SELECT * FROM streams WHERE is_live = true ORDER BY start_time DESC NULLS LAST")
+        )
         rows = result.fetchall()
         return [cls(**row._asdict()) for row in rows]
 
-engine = create_async_engine(
-    settings.database_url,
-    echo=True,
-    future=True
-)
+
+async def replace_stream_viewers(db: AsyncSession, stream_id: str, user_ids: List[str]):
+    await db.execute(
+        text("DELETE FROM stream_viewers WHERE stream_id = CAST(:sid AS uuid)"),
+        {"sid": stream_id},
+    )
+    for uid in user_ids:
+        if not uid:
+            continue
+        await db.execute(
+            text(
+                """
+                INSERT INTO stream_viewers (stream_id, user_id)
+                VALUES (CAST(:sid AS uuid), CAST(:uid AS uuid))
+                ON CONFLICT (stream_id, user_id) DO NOTHING
+                """
+            ),
+            {"sid": stream_id, "uid": uid.strip()},
+        )
+    await db.commit()
+
+
+async def is_stream_viewer(db: AsyncSession, stream_id: str, user_id: str) -> bool:
+    result = await db.execute(
+        text(
+            """
+            SELECT 1 FROM stream_viewers
+            WHERE stream_id = CAST(:sid AS uuid) AND user_id = CAST(:uid AS uuid)
+            LIMIT 1
+            """
+        ),
+        {"sid": stream_id, "uid": user_id},
+    )
+    return result.first() is not None
+
+
+async def list_stream_viewer_ids(db: AsyncSession, stream_id: str) -> List[str]:
+    result = await db.execute(
+        text(
+            "SELECT user_id::text FROM stream_viewers WHERE stream_id = CAST(:sid AS uuid)"
+        ),
+        {"sid": stream_id},
+    )
+    return [str(row[0]) for row in result.fetchall()]
+
+
+engine = create_async_engine(settings.database_url, echo=False, future=True)
 
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with async_session() as session:
@@ -145,6 +243,27 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         finally:
             await session.close()
 
+
 async def create_tables():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS stream_viewers (
+                    stream_id UUID NOT NULL REFERENCES streams(id) ON DELETE CASCADE,
+                    user_id UUID NOT NULL,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    PRIMARY KEY (stream_id, user_id)
+                )
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE streams ADD COLUMN IF NOT EXISTS visibility VARCHAR(32) NOT NULL DEFAULT 'dgi_employees'"
+            )
+        )
+        await conn.execute(text("ALTER TABLE streams ADD COLUMN IF NOT EXISTS mediamtx_path VARCHAR(255)"))
+        await conn.execute(text("ALTER TABLE streams ADD COLUMN IF NOT EXISTS recording_dir VARCHAR(512)"))

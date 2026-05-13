@@ -1,34 +1,143 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect
+import asyncio
+import json
+import logging
+import os
+import subprocess
+import uuid as uuid_lib
+from datetime import datetime
+from typing import List, Optional, Set
+
+import httpx
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 import uvicorn
-from pydantic import BaseModel
-from typing import Optional, List
-import os
-import uuid
-import asyncio
-import logging
-from datetime import datetime
-import httpx
-import subprocess
-import json
 
-from .database import get_db, create_tables, Stream
+from .auth_client import auth_client
 from .config import settings
+from .database import (
+    Stream,
+    async_session,
+    create_tables,
+    get_db,
+    is_stream_viewer,
+    list_stream_viewer_ids,
+    replace_stream_viewers,
+)
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Security
 security = HTTPBearer()
+security_optional = HTTPBearer(auto_error=False)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await create_tables()
+    logger.info("Streaming service started")
+    yield
+    logger.info("Streaming service shutting down")
+
+
+app = FastAPI(title="Streaming Service", version="1.0.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+async def get_current_user_id(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(
+                f"{settings.auth_service_url}/users/me",
+                headers={"Authorization": f"Bearer {credentials.credentials}"},
+                timeout=10.0,
+            )
+            if response.status_code == 200:
+                return response.json()["id"]
+            raise HTTPException(status_code=401, detail="Invalid token")
+        except HTTPException:
+            raise
+        except httpx.RequestError:
+            raise HTTPException(status_code=503, detail="Auth service unavailable")
+
+
+async def get_optional_profile(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_optional),
+) -> Optional[dict]:
+    if not credentials:
+        return None
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(
+                f"{settings.auth_service_url}/users/me",
+                headers={"Authorization": f"Bearer {credentials.credentials}"},
+                timeout=10.0,
+            )
+            if response.status_code == 200:
+                return response.json()
+            return None
+        except httpx.RequestError:
+            return None
+
+
+async def get_current_user_with_permissions(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Token required")
+    user_data = await auth_client.verify_token(credentials.credentials)
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    permissions = await auth_client.get_user_service_permissions(user_data["id"])
+    if not permissions:
+        raise HTTPException(status_code=403, detail="Нет доступа к видеосервису (RBAC)")
+
+    return {
+        "id": user_data["id"],
+        "username": user_data["username"],
+        "permissions": permissions.get("permissions", []),
+        "is_employee": user_data.get("is_employee", True),
+    }
+
+
+def require_permission(permission: str):
+    async def dependency(user=Depends(get_current_user_with_permissions)):
+        if permission not in user["permissions"]:
+            raise HTTPException(status_code=403, detail=f"Нужно право: {permission}")
+        return user["id"]
+
+    return dependency
+
+
+async def _ensure_channel_exists(owner_id: str) -> None:
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{settings.video_service_url}/internal/channels/by-owner/{owner_id}",
+            headers={"Authorization": f"Bearer {settings.internal_auth_token}"},
+            timeout=15.0,
+        )
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=403,
+                detail="Сначала создайте канал для запуска трансляции",
+            )
+
 
 class StreamCreate(BaseModel):
     title: str
     description: str = ""
-    is_private: bool = False
+    visibility: str = Field("dgi_employees", pattern="^(dgi_employees|private)$")
+    allowed_user_ids: List[str] = []
+
 
 class StreamResponse(BaseModel):
     id: str
@@ -39,318 +148,382 @@ class StreamResponse(BaseModel):
     is_live: bool
     start_time: Optional[datetime]
     user_id: str
+    visibility: str = "dgi_employees"
+    rtmp_server_url: str
+    rtmp_stream_key: str
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    await create_tables()
-    logger.info("Streaming service started")
-    yield
-    # Shutdown
-    logger.info("Streaming service shutting down")
 
-app = FastAPI(title="Streaming Service", version="1.0.0", lifespan=lifespan)
+def _mediamtx_path(rtmp_key: str) -> str:
+    return f"{settings.rtmp_app}/{rtmp_key}"
 
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
-async def get_current_user_id(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    # Validate token with auth service
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(
-                f"{settings.auth_service_url}/users/me",
-                headers={"Authorization": f"Bearer {credentials.credentials}"}
+def _build_public_hls(mediamtx_path: str) -> str:
+    return f"{settings.public_hls_base.rstrip('/')}/{mediamtx_path}/index.m3u8"
+
+
+def _build_rtmp_server_url() -> str:
+    return f"rtmp://{settings.public_rtmp_host}:{settings.public_rtmp_port}/{settings.rtmp_app}"
+
+
+def to_stream_response(s: Stream) -> StreamResponse:
+    path = getattr(s, "mediamtx_path", None) or _mediamtx_path(s.rtmp_key)
+    hls = _build_public_hls(path)
+    vis = getattr(s, "visibility", None) or ("private" if s.is_private else "dgi_employees")
+    return StreamResponse(
+        id=str(s.id),
+        title=s.title,
+        description=s.description,
+        rtmp_key=s.rtmp_key,
+        hls_url=hls,
+        is_live=bool(s.is_live),
+        start_time=s.start_time,
+        user_id=str(s.user_id),
+        visibility=vis,
+        rtmp_server_url=_build_rtmp_server_url(),
+        rtmp_stream_key=s.rtmp_key,
+    )
+
+
+def _can_view_stream(stream: Stream, profile: Optional[dict]) -> bool:
+    if not profile:
+        return False
+    uid = str(profile["id"])
+    if str(stream.user_id) == uid:
+        return True
+    vis = getattr(stream, "visibility", None) or ("private" if stream.is_private else "dgi_employees")
+    if vis == "dgi_employees":
+        return bool(profile.get("is_employee", True))
+    return False
+
+
+async def _can_view_stream_db(db: AsyncSession, stream: Stream, profile: Optional[dict]) -> bool:
+    if _can_view_stream(stream, profile):
+        return True
+    if not profile:
+        return False
+    vis = getattr(stream, "visibility", None) or ("private" if stream.is_private else "dgi_employees")
+    if vis == "private":
+        return await is_stream_viewer(db, str(stream.id), str(profile["id"]))
+    return False
+
+
+async def _resolve_owner_usernames(user_ids: Set[str]) -> dict:
+    """Логины владельцев эфиров по user_id (внутренний вызов auth-service)."""
+    if not user_ids:
+        return {}
+    headers = {"Authorization": f"Bearer {settings.internal_auth_token}"}
+    out: dict = {}
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for uid in user_ids:
+            uid_s = str(uid)
+            try:
+                r = await client.get(
+                    f"{settings.auth_service_url}/internal/users/{uid_s}/profile-mini",
+                    headers=headers,
+                )
+                if r.status_code == 200:
+                    out[uid_s] = r.json().get("username") or "user"
+                else:
+                    out[uid_s] = "…"
+            except httpx.RequestError:
+                out[uid_s] = "…"
+    return out
+
+
+@app.post("/internal/mediamtx/auth")
+async def mediamtx_auth(request: Request, db: AsyncSession = Depends(get_db)):
+    """MediaMTX HTTP authentication (publish only)."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    action = body.get("action", "")
+    path = (body.get("path") or "").strip("/")
+    logger.info("MediaMTX auth: action=%s path=%s", action, path)
+
+    if action != "publish":
+        return {"status": "ok"}
+
+    parts = path.split("/")
+    key = parts[-1] if parts else ""
+    if not key:
+        raise HTTPException(status_code=401, detail="missing stream key")
+
+    stream = await Stream.get_by_rtmp_key(db, key)
+    if not stream or not stream.is_live:
+        raise HTTPException(status_code=401, detail="stream not active")
+
+    return {"status": "ok"}
+
+
+@app.get("/internal/mediamtx/not-ready")
+async def mediamtx_not_ready(
+    path: str,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    """MediaMTX runOnNotReady: publisher disconnected."""
+    path = path.strip("/")
+    parts = path.split("/")
+    key = parts[-1] if parts else ""
+    if not key:
+        return {"ok": True}
+    stream = await Stream.get_by_rtmp_key(db, key)
+    if not stream:
+        return {"ok": True}
+    if stream.archived_video_id:
+        return {"ok": True}
+    await Stream.update_status(db, str(stream.id), is_live=False, end_time=datetime.utcnow())
+    background_tasks.add_task(archive_stream_task, str(stream.id))
+    return {"ok": True}
+
+
+async def archive_stream_task(stream_id: str):
+    async with async_session() as db:
+        stream = await Stream.get_by_id(db, stream_id)
+        if not stream or stream.archived_video_id:
+            return
+        invited = await list_stream_viewer_ids(db, stream_id)
+        key = stream.rtmp_key
+        user_id = str(stream.user_id)
+        title = stream.title
+        description = stream.description or ""
+        visibility = getattr(stream, "visibility", None) or ("private" if stream.is_private else "dgi_employees")
+
+    base_dir = settings.recordings_path
+    candidates: List[str] = []
+    if os.path.isdir(base_dir):
+        for root, _, files in os.walk(base_dir):
+            for f in files:
+                if f.endswith((".mp4", ".m4v", ".mpd", ".webm", ".ts", ".m4s")):
+                    full = os.path.join(root, f)
+                    candidates.append(full)
+
+    narrowed = [p for p in candidates if key in p.replace(os.sep, "/")]
+    paths = sorted(narrowed or candidates, key=os.path.getmtime, reverse=True) if (narrowed or candidates) else []
+
+    if not paths:
+        logger.warning("No recording files for stream %s", stream_id)
+        return
+
+    out_mp4 = os.path.join("/tmp", f"stream-archive-{stream_id}.mp4")
+    try:
+        if len(paths) == 1 and paths[0].endswith(".mp4"):
+            out_mp4 = paths[0]
+        elif len(paths) == 1:
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", paths[0], "-c", "copy", out_mp4],
+                check=False,
+                capture_output=True,
+                timeout=3600,
             )
-            if response.status_code == 200:
-                user_data = response.json()
-                return user_data["id"]
-            else:
-                raise HTTPException(status_code=401, detail="Invalid token")
-        except httpx.RequestError:
-            raise HTTPException(status_code=503, detail="Auth service unavailable")
+        else:
+            lst = "/tmp/concat-" + str(uuid_lib.uuid4()) + ".txt"
+            with open(lst, "w", encoding="utf-8") as fh:
+                for p in sorted(paths):
+                    fh.write(f"file '{p}'\n")
+            subprocess.run(
+                ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst, "-c", "copy", out_mp4],
+                check=False,
+                capture_output=True,
+                timeout=3600,
+            )
+            try:
+                os.remove(lst)
+            except OSError:
+                pass
+    except Exception as e:
+        logger.error("ffmpeg error: %s", e)
+        out_mp4 = paths[0]
 
-async def get_current_user_with_permissions(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Get current user with service-specific permissions"""
-    if not credentials:
-        raise HTTPException(status_code=401, detail="Token required")
+    if not os.path.isfile(out_mp4) or os.path.getsize(out_mp4) < 2048:
+        logger.warning("Recording too small; skip archive for %s", stream_id)
+        return
 
-    from .auth_client import auth_client
-    user_data = await auth_client.verify_token(credentials.credentials)
-    if not user_data:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    is_restricted = visibility == "private"
+    classification = "restricted" if is_restricted else "internal"
+    invited_csv = ",".join(invited)
 
-    # Get service permissions
-    permissions = await auth_client.get_user_service_permissions(user_data["id"])
-    if not permissions:
-        raise HTTPException(status_code=403, detail="No access to streaming service")
+    try:
+        with open(out_mp4, "rb") as fh:
+            file_data = fh.read()
+    except OSError as e:
+        logger.error("Cannot read recording: %s", e)
+        return
 
-    return {
-        "id": user_data["id"],
-        "username": user_data["username"],
-        "permissions": permissions.get("permissions", [])
+    data = {
+        "user_id": user_id,
+        "title": f"Запись эфира: {title}",
+        "description": description,
+        "classification": classification,
+        "is_private": str(is_restricted).lower(),
+        "invited_user_ids": invited_csv,
     }
+    files = {"file": ("live-recording.mp4", file_data, "video/mp4")}
 
-def require_permission(permission: str):
-    """Dependency to require specific permission"""
-    async def dependency(user = Depends(get_current_user_with_permissions)):
-        if permission not in user["permissions"]:
-            raise HTTPException(status_code=403, detail=f"Permission '{permission}' required")
-        return user["id"]
-    return dependency
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        resp = await client.post(
+            f"{settings.video_service_url}/internal/videos/from-recording",
+            headers={"Authorization": f"Bearer {settings.internal_auth_token}"},
+            data=data,
+            files=files,
+        )
+        if resp.status_code != 200:
+            logger.error("Archive upload failed: %s %s", resp.status_code, resp.text)
+            return
+        payload = resp.json()
+        vid = payload.get("video_id")
+        if vid:
+            async with async_session() as db:
+                await Stream.update_status(db, stream_id, archived_video_id=vid)
+            logger.info("Stream %s archived as video %s", stream_id, vid)
+
+
+@app.get("/streams/live")
+async def get_live_streams_public_filtered(
+    db: AsyncSession = Depends(get_db),
+    profile: Optional[dict] = Depends(get_optional_profile),
+):
+    """Список активных эфиров с учётом видимости (сотрудники ДГИ / приватные приглашённые)."""
+    rows = await Stream.get_live_streams(db)
+    visible: List[Stream] = []
+    for s in rows:
+        if await _can_view_stream_db(db, s, profile):
+            visible.append(s)
+    owner_names = await _resolve_owner_usernames({str(s.user_id) for s in visible})
+    items: List[dict] = []
+    for s in visible:
+        r = to_stream_response(s)
+        uid = str(s.user_id)
+        items.append(
+            {
+                "id": r.id,
+                "title": r.title,
+                "description": r.description,
+                "hls_url": r.hls_url,
+                "is_live": r.is_live,
+                "user_id": r.user_id,
+                "owner_username": owner_names.get(uid),
+                "created_at": s.created_at.isoformat() if s.created_at else None,
+                "viewers_count": 0,
+                "visibility": r.visibility,
+            }
+        )
+    return {"streams": items}
+
 
 @app.post("/streams", response_model=StreamResponse)
 async def create_stream(
     stream_data: StreamCreate,
     user_id: str = Depends(require_permission("video:stream")),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
-    # Check if user has a channel
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(
-                f"{settings.video_service_url}/channels/my",
-                headers={"Authorization": f"Bearer {settings.internal_auth_token}"}
-            )
-            if response.status_code != 200:
-                raise HTTPException(status_code=403, detail="You must create a channel before starting streams")
-        except httpx.RequestError:
-            raise HTTPException(status_code=503, detail="Video service unavailable")
+    await _ensure_channel_exists(user_id)
 
-    # Generate RTMP key
-    rtmp_key = str(uuid.uuid4()).replace('-', '')[:16]
+    rtmp_key = str(uuid_lib.uuid4()).replace("-", "")[:16]
+    mediamtx_path = _mediamtx_path(rtmp_key)
+    hls_url = _build_public_hls(mediamtx_path)
 
-    # Generate HLS URL
-    hls_url = f"/hls/{rtmp_key}/index.m3u8"
-
-    # Create stream record
-    stream = await Stream.create(db, **{
-        "title": stream_data.title,
-        "description": stream_data.description,
-        "user_id": user_id,
-        "rtmp_key": rtmp_key,
-        "hls_url": hls_url,
-        "is_private": stream_data.is_private
-    })
-
-    return StreamResponse(
-        id=str(stream.id),
-        title=stream.title,
-        description=stream.description,
-        rtmp_key=stream.rtmp_key,
-        hls_url=stream.hls_url,
-        is_live=stream.is_live,
-        start_time=stream.start_time,
-        user_id=str(stream.user_id)
+    stream = await Stream.create(
+        db,
+        **{
+            "title": stream_data.title,
+            "description": stream_data.description,
+            "user_id": user_id,
+            "rtmp_key": rtmp_key,
+            "hls_url": hls_url,
+            "visibility": stream_data.visibility,
+            "mediamtx_path": mediamtx_path,
+        },
     )
+    if stream_data.visibility == "private" and stream_data.allowed_user_ids:
+        await replace_stream_viewers(db, str(stream.id), stream_data.allowed_user_ids)
+
+    return to_stream_response(stream)
+
+
+@app.get("/streams/my-active")
+async def get_my_active_stream(
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Последняя трансляция пользователя (черновик или live), не заархивированная."""
+    s = await Stream.get_latest_for_owner(db, user_id)
+    if not s or s.archived_video_id:
+        return {"stream": None}
+    return {"stream": to_stream_response(s).model_dump()}
+
 
 @app.get("/streams", response_model=List[StreamResponse])
 async def list_streams(
     user_id: str = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     streams = await Stream.get_all(db, user_id=user_id)
-    return [
-        StreamResponse(
-            id=str(s.id),
-            title=s.title,
-            description=s.description,
-            rtmp_key=s.rtmp_key,
-            hls_url=s.hls_url,
-            is_live=s.is_live,
-            start_time=s.start_time,
-            user_id=str(s.user_id)
-        ) for s in streams
-    ]
+    return [to_stream_response(s) for s in streams]
+
 
 @app.get("/streams/{stream_id}", response_model=StreamResponse)
 async def get_stream(
     stream_id: str,
-    user_id: str = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db)
+    profile: Optional[dict] = Depends(get_optional_profile),
+    db: AsyncSession = Depends(get_db),
 ):
     stream = await Stream.get_by_id(db, stream_id)
     if not stream:
-        raise HTTPException(status_code=404, detail="Stream not found")
+        raise HTTPException(status_code=404, detail="Трансляция не найдена")
+    if not await _can_view_stream_db(db, stream, profile):
+        raise HTTPException(status_code=403, detail="Нет доступа к трансляции")
+    return to_stream_response(stream)
 
-    # Check permissions for private streams
-    if stream.is_private and str(stream.user_id) != user_id:
-        if not await check_private_stream_permission(user_id, stream.user_id):
-            raise HTTPException(status_code=403, detail="Access denied")
-
-    return StreamResponse(
-        id=str(stream.id),
-        title=stream.title,
-        description=stream.description,
-        rtmp_key=stream.rtmp_key,
-        hls_url=stream.hls_url,
-        is_live=stream.is_live,
-        start_time=stream.start_time,
-        user_id=str(stream.user_id)
-    )
-
-async def check_private_stream_permission(viewer_id: str, owner_id: str) -> bool:
-    # Check if viewer has 'manage_streams' permission
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(
-                f"{settings.auth_service_url}/users/{viewer_id}/permissions",
-                headers={"Authorization": f"Bearer {settings.internal_auth_token}"}
-            )
-            if response.status_code == 200:
-                permissions = response.json()
-                return "manage_streams" in permissions
-        except httpx.RequestError:
-            pass
-    return False
 
 @app.put("/streams/{stream_id}/start")
 async def start_stream(
     stream_id: str,
     user_id: str = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
-    # Verify ownership
     stream = await Stream.get_by_id(db, stream_id)
     if not stream or str(stream.user_id) != user_id:
-        raise HTTPException(status_code=404, detail="Stream not found")
+        raise HTTPException(status_code=404, detail="Трансляция не найдена")
 
-    # Update stream status
     await Stream.update_status(db, stream_id, is_live=True, start_time=datetime.utcnow())
+    return {"message": "Можно подключать OBS", "stream_id": stream_id}
 
-    # Send notification about stream start
-    await send_notification(
-        user_id,
-        "stream_start",
-        f"Трансляция '{stream.title}' началась",
-        {"stream_id": stream_id}
-    )
-
-    return {"message": "Stream started"}
 
 @app.put("/streams/{stream_id}/stop")
 async def stop_stream(
     stream_id: str,
+    background_tasks: BackgroundTasks,
     user_id: str = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
-    # Verify ownership
     stream = await Stream.get_by_id(db, stream_id)
     if not stream or str(stream.user_id) != user_id:
-        raise HTTPException(status_code=404, detail="Stream not found")
+        raise HTTPException(status_code=404, detail="Трансляция не найдена")
 
-    # Update stream status
     await Stream.update_status(db, stream_id, is_live=False, end_time=datetime.utcnow())
+    if not stream.archived_video_id:
+        background_tasks.add_task(archive_stream_task, stream_id)
+    return {"message": "Трансляция остановлена, идёт сохранение записи", "stream_id": stream_id}
 
-    # Archive the stream to video (placeholder)
-    # In production, this would convert DVR segments to a video file
-    archived_video_id = await archive_stream(stream_id)
 
-    return {"message": "Stream stopped", "archived_video_id": archived_video_id}
-
-async def archive_stream(stream_id: str) -> Optional[str]:
-    """
-    Archive stream by combining HLS segments into a video file
-    """
-    logger.info(f"Archiving stream {stream_id}")
-    
-    try:
-        # Get stream info
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{settings.video_service_url}/videos",
-                headers={"Authorization": f"Bearer {settings.internal_auth_token}"}
-            )
-        
-        # Placeholder: In real implementation, this would:
-        # 1. Download HLS segments from Nginx temp storage
-        # 2. Combine them using FFmpeg
-        # 3. Upload to MinIO
-        # 4. Create video record
-        # 5. Update stream with archived_video_id
-        
-        logger.info(f"Stream {stream_id} archived (placeholder)")
-        return None
-    except Exception as e:
-        logger.error(f"Failed to archive stream {stream_id}: {e}")
-        return None
-
-async def send_notification(user_id: str, notification_type: str, message: str, data: dict = None):
-    # Send notification via notification service
-    async with httpx.AsyncClient() as client:
-        try:
-            await client.post(
-                f"{settings.notification_service_url}/notifications",
-                json={
-                    "user_id": user_id,
-                    "type": notification_type,
-                    "message": message,
-                    "data": data
-                },
-                headers={"Authorization": f"Bearer {settings.internal_auth_token}"}
-            )
-        except httpx.RequestError:
-            logger.error("Failed to send notification")
-
-# WebSocket endpoint for real-time stream status updates
 @app.websocket("/ws/streams/{stream_id}")
 async def stream_websocket(websocket: WebSocket, stream_id: str):
     await websocket.accept()
-
-    # Subscribe to stream updates
     try:
         while True:
-            # In production, this would listen to Redis pub/sub for stream events
-            await asyncio.sleep(5)  # Placeholder
-            # Send stream status updates
-            await websocket.send_json({"type": "status", "stream_id": stream_id, "is_live": True})
+            await asyncio.sleep(30)
+            await websocket.send_json({"type": "ping", "stream_id": stream_id})
     except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected for stream {stream_id}")
+        logger.info("WS disconnected %s", stream_id)
+
 
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
 
-@app.get("/streams/validate")
-async def validate_stream_key(
-    rtmp_key: str,
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Validate RTMP stream key (called by Nginx on publish)
-    """
-    stream = await Stream.get_by_rtmp_key(db, rtmp_key)
-    if not stream:
-        raise HTTPException(status_code=403, detail="Invalid stream key")
-    
-    return {"valid": True, "stream_id": str(stream.id)}
-
-@app.get("/streams/live")
-async def get_live_streams(
-    user_id: str = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Get all currently live streams
-    """
-    streams = await Stream.get_live_streams(db)
-    return [
-        {
-            "id": str(s.id),
-            "title": s.title,
-            "description": s.description,
-            "hls_url": s.hls_url,
-            "start_time": str(s.start_time) if s.start_time else None,
-            "user_id": str(s.user_id)
-        }
-        for s in streams
-    ]
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8002)

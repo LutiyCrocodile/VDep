@@ -332,25 +332,10 @@ export default function PortalPage() {
           <h2 className="text-4xl font-bold text-slate-900 mb-4">
             Добро пожаловать в Портал ДГИ
           </h2>
-          <p className="text-lg text-slate-600 max-w-2xl mx-auto">
+          <p className="text-lg text-white max-w-2xl mx-auto">
             Единая платформа доступа ко всем корпоративным сервисам Департамента городского имущества Москвы
           </p>
           
-          {/* Stats or features */}
-          <div className="flex justify-center gap-8 mt-8">
-            <div className="flex items-center space-x-2 text-slate-600">
-              <Shield className="w-5 h-5 text-green-500" />
-              <span className="text-sm">Защищённый доступ</span>
-            </div>
-            <div className="flex items-center space-x-2 text-slate-600">
-              <Zap className="w-5 h-5 text-yellow-500" />
-              <span className="text-sm">Быстрая работа</span>
-            </div>
-            <div className="flex items-center space-x-2 text-slate-600">
-              <Play className="w-5 h-5 text-blue-500" />
-              <span className="text-sm">Видео и стримы</span>
-            </div>
-          </div>
         </div>
 
         {/* Services grid */}
@@ -401,18 +386,6 @@ export default function PortalPage() {
                   <p className="text-slate-600 text-sm mb-4">
                     {service.description}
                   </p>
-                  
-                  {/* Features */}
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {service.features.map((feature: string) => (
-                      <span 
-                        key={feature}
-                        className="px-2 py-1 bg-slate-100 text-slate-600 text-xs rounded-md"
-                      >
-                        {feature}
-                      </span>
-                    ))}
-                  </div>
 
                   {/* Action button */}
                   <div className="flex items-center space-x-2">
@@ -442,18 +415,10 @@ export default function PortalPage() {
               <h3 className="text-lg font-semibold text-slate-900 mb-2">
                 Информация безопасности
               </h3>
-              <p className="text-slate-600 text-sm mb-4">
+              <p className="text-slate-600 text-sm">
                 Все данные передаются по защищённому соединению. Доступ к сервисам осуществляется 
                 только после авторизации через корпоративную учётную запись.
               </p>
-              <div className="flex items-center space-x-4 text-sm">
-                <span className="text-slate-500">Техническая поддержка:</span>
-                <a href="mailto:support@dgi.mos.ru" className="text-blue-600 hover:underline">
-                  support@dgi.mos.ru
-                </a>
-                <span className="text-slate-300">|</span>
-                <span className="text-slate-500">Телефон: +7 (495) XXX-XX-XX</span>
-              </div>
             </div>
           </div>
         </div>
@@ -465,7 +430,7 @@ export default function PortalPage() {
           <div className="flex flex-col md:flex-row items-center justify-between">
             <div className="flex items-center space-x-3 mb-4 md:mb-0">
               <Building2 className="w-6 h-6" />
-              <span className="text-sm">© 2024 Департамент городского имущества Москвы</span>
+              <span className="text-sm">© 2026 Департамент городского имущества Москвы</span>
             </div>
             <div className="flex items-center space-x-6 text-sm">
               <a href="#" className="hover:text-white transition-colors">Помощь</a>

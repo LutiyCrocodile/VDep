@@ -89,7 +89,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('refresh_token');
     setUser(null);
     setIsAuthenticated(false);
-    window.location.href = 'http://localhost:3002/login';
+    const portal =
+      (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_PORTAL_URL) || 'http://localhost:3002';
+    window.location.href = `${portal.replace(/\/$/, '')}/login`;
   };
 
   return (

@@ -1,0 +1,37 @@
+# MediaMTX: RTMP ingest + HLS playback + fMP4 recording on shared volume /recordings
+# Auth: HTTP to streaming-service (publish only); read/playback open (access enforced by app before showing URL).
+
+logLevel: info
+
+api: yes
+apiAddress: :9997
+
+authMethod: http
+authHTTPAddress: http://streaming-service:8002/internal/mediamtx/auth
+authHTTPExclude:
+  - action: read
+    path:
+  - action: playback
+    path:
+  - action: api
+    path:
+  - action: metrics
+    path:
+  - action: pprof
+    path:
+
+rtmp: yes
+rtmpAddress: :1935
+
+hls: yes
+hlsAddress: :8888
+hlsAllowOrigin: "*"
+
+pathDefaults:
+  source: publisher
+  record: yes
+  recordPath: /recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+  runOnNotReady: sh -c "curl -sfG --data-urlencode path=\"$MTX_PATH\" http://streaming-service:8002/internal/mediamtx/not-ready"
+
+paths:
+  all_others:
