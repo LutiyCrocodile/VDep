@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, Header
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -509,23 +510,80 @@ def _minio_public_base_url() -> str:
     return f"{scheme}://{ep}".rstrip("/")
 
 
-def get_thumbnail_url(thumbnail_path: str) -> str:
-    """Convert thumbnail path to full URL"""
-    if not thumbnail_path:
+def _normalize_object_key(object_path: str) -> str:
+    if not object_path:
         return ""
-    if thumbnail_path.startswith('http'):
-        return thumbnail_path
+    bucket = settings.minio_bucket
+    key = object_path.lstrip("/")
+    if key.startswith(f"{bucket}/"):
+        key = key[len(bucket) + 1 :]
+    return key
+
+
+def _storage_public_url(object_path: str) -> str:
+    """Публичный URL для браузера: через video-service /media (dev) или напрямую MinIO (prod)."""
+    if not object_path:
+        return ""
+    if object_path.startswith("http"):
+        return object_path
+    key = _normalize_object_key(object_path)
+    if settings.public_media_via_api:
+        return f"{settings.public_video_api_url.rstrip('/')}/media/{key}"
     base = _minio_public_base_url()
-    return f"{base}/{settings.minio_bucket}{thumbnail_path}"
+    bucket = settings.minio_bucket
+    return f"{base}/{bucket}/{key}"
+
+
+_MEDIA_TYPES = {
+    ".m3u8": "application/vnd.apple.mpegurl",
+    ".ts": "video/mp2t",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+}
+
+
+@app.get("/media/{object_path:path}")
+async def serve_media(object_path: str):
+    """Прокси объектов MinIO для HLS/превью (same-origin с API, без CORS)."""
+    key = _normalize_object_key(object_path)
+    if not key:
+        raise HTTPException(status_code=404, detail="Not found")
+    try:
+        obj = minio_client.get_object(settings.minio_bucket, key)
+    except S3Error as e:
+        if e.code in ("NoSuchKey", "NoSuchBucket"):
+            raise HTTPException(status_code=404, detail="Not found")
+        logger.error("MinIO get_object %s: %s", key, e)
+        raise HTTPException(status_code=500, detail="Storage error")
+
+    ext = os.path.splitext(key)[1].lower()
+    media_type = _MEDIA_TYPES.get(ext, "application/octet-stream")
+
+    def stream():
+        try:
+            for chunk in obj.stream(32 * 1024):
+                yield chunk
+        finally:
+            obj.close()
+            obj.release_conn()
+
+    return StreamingResponse(
+        stream(),
+        media_type=media_type,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "public, max-age=120",
+        },
+    )
+
+
+def get_thumbnail_url(thumbnail_path: str) -> str:
+    return _storage_public_url(thumbnail_path)
+
 
 def get_playlist_url(playlist_path: str) -> str:
-    """Convert playlist path to full URL accessible by frontend"""
-    if not playlist_path:
-        return ""
-    if playlist_path.startswith('http'):
-        return playlist_path
-    base = _minio_public_base_url()
-    return f"{base}/{settings.minio_bucket}{playlist_path}"
+    return _storage_public_url(playlist_path)
 
 @app.get("/videos", response_model=List[VideoResponse])
 async def list_videos(
@@ -772,7 +830,7 @@ async def get_video(
         bitrate=video.bitrate,
         file_size=video.file_size,
         status=video.status,
-        hls_playlist_url=video.hls_playlist_url,
+        hls_playlist_url=get_playlist_url(video.hls_playlist_url or ""),
         thumbnail_url=get_thumbnail_url(video.thumbnail_url),
         is_private=video.is_private,
         tags=video.tags or [],
@@ -805,33 +863,28 @@ async def check_private_video_permission(viewer_id: str, owner_id: str) -> bool:
 CLASSIFICATION_LEVELS = ['public', 'internal', 'confidential', 'restricted']
 
 async def get_user_classification_level(user_id: Optional[str]) -> str:
-    """Get user's maximum classification level. Returns 'public' for anonymous users, 'internal' for authenticated users by default."""
+    """Уровень допуска по роли в video-сервисе (auth-service internal API)."""
     if not user_id:
         return 'public'
-    
-    # Check user roles/permissions via auth service
-    async with httpx.AsyncClient() as client:
+
+    async with httpx.AsyncClient(timeout=5.0) as client:
         try:
             response = await client.get(
-                f"{settings.auth_service_url}/users/{user_id}/roles",
-                headers={"Authorization": f"Bearer {settings.internal_auth_token}"}
+                f"{settings.auth_service_url}/internal/users/{user_id}/services/video",
+                headers={"Authorization": f"Bearer {settings.internal_auth_token}"},
             )
             if response.status_code == 200:
-                roles = response.json()
-                # Check for DGI employee roles
-                role_names = [r.get('name', '').lower() for r in roles]
-                if any(r in ['admin', 'moderator', 'dgi_employee', 'employee'] for r in role_names):
-                    return 'restricted'  # DGI employees can see all
-                elif any(r in ['partner', 'contractor'] for r in role_names):
-                    return 'confidential'
-                elif any(r in ['registered', 'user'] for r in role_names):
-                    return 'internal'
-                # If no specific roles matched but user is authenticated, default to 'internal'
-                return 'internal'
+                data = response.json()
+                role = (data.get("role") or "").lower()
+                if role in ("admin", "manager"):
+                    return "restricted"
+                if role in ("uploader", "moderator"):
+                    return "confidential"
+                if role == "viewer":
+                    return "internal"
         except httpx.RequestError:
             pass
-    
-    # If auth service is unavailable but user is authenticated, default to 'internal'
+
     return 'internal'
 
 def can_access_classification(user_level: str, video_level: str) -> bool:
@@ -930,9 +983,10 @@ async def get_video_playlist(
     if not video.hls_playlist_url:
         raise HTTPException(status_code=404, detail="Video not ready for streaming")
 
-    # Return direct URL to MinIO (bucket is now public)
     try:
-        playlist_url = f"{_minio_public_base_url()}/{settings.minio_bucket}/{video_id}/hls/master.m3u8"
+        playlist_url = get_playlist_url(video.hls_playlist_url)
+        if not playlist_url:
+            playlist_url = _storage_public_url(f"{video_id}/hls/master.m3u8")
         return {"playlist_url": playlist_url, "status": video.status}
     except Exception as e:
         logger.error(f"Failed to generate playlist URL: {e}")
@@ -1359,7 +1413,7 @@ async def get_channel_videos(
             bitrate=v.bitrate,
             file_size=v.file_size,
             status=v.status,
-            hls_playlist_url=v.hls_playlist_url,
+            hls_playlist_url=get_playlist_url(v.hls_playlist_url or ""),
             thumbnail_url=get_thumbnail_url(v.thumbnail_url),
             is_private=v.is_private,
             tags=v.tags or [],

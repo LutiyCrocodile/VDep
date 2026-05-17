@@ -13,6 +13,9 @@ RUN npm install
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
+# Куда portal проксирует /api/auth/* при сборке Next (имя сервиса в Docker-сети)
+ARG AUTH_INTERNAL_URL=http://auth-service:8000
+ENV AUTH_INTERNAL_URL=$AUTH_INTERNAL_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 

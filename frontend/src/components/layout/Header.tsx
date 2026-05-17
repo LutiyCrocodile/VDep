@@ -6,6 +6,7 @@ import { useAuth } from '@/services/auth';
 import { useRouter } from 'next/navigation';
 import { channelsAPI } from '@/services/api';
 import { useSidebar } from '@/contexts/SidebarContext';
+import { getPortalLoginUrl } from '@/lib/portal-url';
 
 export default function Header() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -113,7 +114,7 @@ export default function Header() {
           </>
         ) : (
           <a
-            href="http://localhost:3002/login"
+            href={getPortalLoginUrl()}
             className="bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white px-5 py-2 rounded-full text-sm font-medium transition-all duration-200 shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/40"
           >
             Войти через портал

@@ -112,64 +112,7 @@ export default function Home() {
         const errorDetail = err.response?.data?.detail || err.message || 'Не удалось загрузить видео';
         const errorMessage = typeof errorDetail === 'string' ? errorDetail : JSON.stringify(errorDetail);
         setError(errorMessage);
-        // Mock data for demonstration with categories
-        setVideos([
-          {
-            id: '1',
-            title: 'Обзор нового проекта - ДГИ Москва',
-            description: 'Видеообзор нового проекта',
-            views_count: 1250,
-            created_at: new Date().toISOString(),
-            owner_username: 'Администратор',
-            duration: 480,
-            status: 'ready',
-            category: 'Проекты',
-          },
-          {
-            id: '2',
-            title: 'Совещание отдела имущества - 2024',
-            description: 'Еженедельное совещание',
-            views_count: 890,
-            created_at: new Date(Date.now() - 86400000).toISOString(),
-            owner_username: 'Менеджер',
-            duration: 3600,
-            status: 'ready',
-            category: 'Совещания',
-          },
-          {
-            id: '3',
-            title: 'Инструкция по работе с системой',
-            description: 'Обучающее видео',
-            views_count: 2100,
-            created_at: new Date(Date.now() - 172800000).toISOString(),
-            owner_username: 'HR',
-            duration: 900,
-            status: 'ready',
-            category: 'Обучение',
-          },
-          {
-            id: '4',
-            title: 'Новости компании - Май 2024',
-            description: 'Актуальные новости',
-            views_count: 1500,
-            created_at: new Date(Date.now() - 259200000).toISOString(),
-            owner_username: 'Пресс-служба',
-            duration: 600,
-            status: 'ready',
-            category: 'Новости',
-          },
-          {
-            id: '5',
-            title: 'Прямая трансляция: Отчет за квартал',
-            description: 'Live stream',
-            views_count: 3200,
-            created_at: new Date().toISOString(),
-            owner_username: 'Директор',
-            duration: 5400,
-            status: 'ready',
-            category: 'Прямые трансляции',
-          },
-        ]);
+        setVideos([]);
       } finally {
         setIsLoading(false);
       }

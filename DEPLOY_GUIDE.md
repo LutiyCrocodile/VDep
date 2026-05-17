@@ -477,10 +477,11 @@ networks:
 
 ## 5. Настройка переменных окружения
 
-### 5.1. Создание .env.production
+### 5.1. Создание .env для Docker Compose
 ```bash
-cp .env.example .env.production
-vim .env.production
+cd infrastructure/docker
+cp .env.example .env
+vim .env
 ```
 
 ### 5.2. Заполнение критичных переменных
@@ -820,8 +821,8 @@ http {
 ### 7.1. Сборка и запуск
 ```bash
 cd /opt/video-dgi
-docker-compose -f docker-compose.prod.yml --env-file .env.production build
-docker-compose -f docker-compose.prod.yml --env-file .env.production up -d
+docker-compose -f docker-compose.prod.yml --env-file .env build
+docker-compose -f docker-compose.prod.yml --env-file .env up -d
 ```
 
 ### 7.2. Проверка статуса контейнеров
@@ -852,7 +853,7 @@ docker-compose -f docker-compose.prod.yml exec db psql -U video_user -d video_ho
 ### 7.5. Создание бакета MinIO
 ```bash
 # Войти в MinIO console: https://ВАШ_IP:9001
-# Логин: minio_admin, пароль из .env.production
+# Логин: minio_admin, пароль из .env
 # Создать бакет "videos" с политикой public read
 ```
 
@@ -962,7 +963,7 @@ scrape_configs:
 ### 9.2. Доступ к Grafana
 - URL: `https://ВАШ_IP:3001` (или настройте через nginx)
 - Логин: admin
-- Пароль: из `.env.production`
+- Пароль: из `.env`
 
 ### 9.3. Логирование
 Все логи Docker хранятся в `/var/lib/docker/containers/`. Для централизованного логирования можно использовать ELK Stack или Loki.
@@ -1018,15 +1019,15 @@ sudo dpkg-reconfigure -plow unattended-upgrades
 ```bash
 cd /opt/video-dgi
 git pull origin main
-docker-compose -f docker-compose.prod.yml --env-file .env.production build
-docker-compose -f docker-compose.prod.yml --env-file .env.production up -d
-docker-compose -f docker-compose.prod.yml --env-file .env.production exec db alembic upgrade head
+docker-compose -f docker-compose.prod.yml --env-file .env build
+docker-compose -f docker-compose.prod.yml --env-file .env up -d
+docker-compose -f docker-compose.prod.yml --env-file .env exec db alembic upgrade head
 ```
 
 ### 11.2. Откат при проблемах
 ```bash
 git checkout <previous_commit>
-docker-compose -f docker-compose.prod.yml --env-file .env.production up -d
+docker-compose -f docker-compose.prod.yml --env-file .env up -d
 ```
 
 ---

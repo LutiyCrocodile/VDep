@@ -196,7 +196,7 @@ def transcode_video(self, video_id: str, minio_key: str):
             self.update_state(state='PROGRESS', meta={'percent': 100})
 
             # Generate HLS playlist URL (using nginx proxy to MinIO)
-            hls_url = f"/videos/{video_id}/hls/master.m3u8"
+            hls_url = f"{video_id}/hls/master.m3u8"
 
             # Update database
             update_video_status(video_id, 'ready', hls_url)

@@ -91,9 +91,9 @@ services/support-service/
 **Пароли:** Все тестовые пользователи имеют пароль `admin123`
 
 ### 7. Конфигурация окружения
-- ✅ `.env` - добавлены URL новых сервисов
-- ✅ `.env.example` - добавлены URL и ALLOW_REGISTRATION
-- ✅ `.env.production.example` - добавлены URL и ALLOW_REGISTRATION=false
+- ✅ `infrastructure/docker/.env` — рабочий файл для Docker (не в git)
+- ✅ `infrastructure/docker/.env.example` — единый шаблон для dev и prod
+- ✅ `frontend/.env.example`, `portal/.env.example` — шаблоны для локального Next без Docker
 - ✅ ALLOW_REGISTRATION по умолчанию выключен
 
 ### 8. Документация

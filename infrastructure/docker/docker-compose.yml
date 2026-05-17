@@ -1,18 +1,21 @@
+# Имя проекта Docker Compose (тома/сеть: <name>_postgres_data). Задайте в .env, иначе при двух клонах
+# в папках .../infrastructure/docker на одном хосте будет конфликт имён по умолчанию.
+name: ${COMPOSE_PROJECT_NAME:-video_dgim_mos}
 
 services:
   # Database
   db:
     image: postgres:15
     environment:
-      POSTGRES_DB: video_hosting
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
+      POSTGRES_DB: ${POSTGRES_DB:-video_hosting}
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d video_hosting"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-video_hosting}"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -57,8 +60,8 @@ services:
   minio:
     image: minio/minio:latest
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -79,13 +82,18 @@ services:
     depends_on:
       minio:
         condition: service_healthy
+    environment:
+      MC_ACCESS: ${MINIO_ROOT_USER:-minioadmin}
+      MC_SECRET: ${MINIO_ROOT_PASSWORD:-minioadmin}
     entrypoint: >
       sh -c "
         sleep 5 &&
-        mc alias set local http://minio:9000 minioadmin minioadmin &&
+        mc alias set local http://minio:9000 $$MC_ACCESS $$MC_SECRET &&
         mc mb -p local/videos &&
         mc anonymous set download local/videos &&
-        echo 'MinIO bucket configured as public'
+        printf '%s\n' '{\"CORSRules\":[{\"AllowedOrigins\":[\"http://localhost:3000\",\"http://localhost:3002\",\"http://127.0.0.1:3000\",\"http://127.0.0.1:3002\"],\"AllowedMethods\":[\"GET\",\"HEAD\",\"PUT\",\"POST\"],\"AllowedHeaders\":[\"*\"],\"ExposeHeaders\":[\"Content-Length\",\"ETag\"],\"MaxAgeSeconds\":3000}]}' > /tmp/cors.json &&
+        mc cors set local/videos /tmp/cors.json || true &&
+        echo 'MinIO bucket configured (public read + CORS for dev frontends)'
       "
     networks:
       - video_network
@@ -117,7 +125,7 @@ services:
       context: ../../services/notification-service
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql+asyncpg://user:password@db:5432/video_hosting
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-video_hosting}
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
@@ -151,7 +159,7 @@ services:
       context: ../../services/search-service
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql+asyncpg://user:password@db:5432/video_hosting
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-video_hosting}
       ELASTICSEARCH_HOSTS: http://elasticsearch:9200
       ELASTICSEARCH_INDEX: videos
       REDIS_URL: redis://redis:6379/0
@@ -159,7 +167,7 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/0
       AUTH_SERVICE_URL: http://auth-service:8000
       VIDEO_SERVICE_URL: http://video-service:8001
-      INTERNAL_AUTH_TOKEN: internal-secret-token
+      INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-internal-secret-token}
     ports:
       - "8004:8004"
     depends_on:
@@ -186,7 +194,7 @@ services:
       context: ../../services/auth-service
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql+asyncpg://user:password@db:5432/video_hosting
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-video_hosting}
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
       INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-internal-secret-token}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
@@ -216,16 +224,18 @@ services:
     volumes:
       - ../../services/video-service/src:/app/src:ro
     environment:
-      DATABASE_URL: postgresql+asyncpg://user:password@db:5432/video_hosting
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-video_hosting}
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       MINIO_BUCKET: videos
       MINIO_SECURE: "false"
       # Хост:порт или полный URL MinIO для ссылок в JSON (браузер), не minio:9000
       MINIO_EXTERNAL_ENDPOINT: ${MINIO_EXTERNAL_ENDPOINT:-localhost:9000}
+      PUBLIC_VIDEO_API_URL: ${PUBLIC_VIDEO_API_URL:-http://localhost:8001}
+      PUBLIC_MEDIA_VIA_API: ${PUBLIC_MEDIA_VIA_API:-true}
       AUTH_SERVICE_URL: http://auth-service:8000
-      INTERNAL_AUTH_TOKEN: internal-secret-token
+      INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-internal-secret-token}
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
@@ -259,10 +269,10 @@ services:
       dockerfile: Dockerfile.celery
     command: celery -A src.celery_app worker --loglevel=info --queues=video_transcoding,video_processing --concurrency=4
     environment:
-      DATABASE_URL: postgresql+asyncpg://user:password@db:5432/video_hosting
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-video_hosting}
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       MINIO_BUCKET: videos
       MINIO_SECURE: "false"
       REDIS_URL: redis://redis:6379/0
@@ -300,9 +310,9 @@ services:
       context: ../../services/streaming-service
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql+asyncpg://user:password@db:5432/video_hosting
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-video_hosting}
       AUTH_SERVICE_URL: http://auth-service:8000
-      INTERNAL_AUTH_TOKEN: internal-secret-token
+      INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-internal-secret-token}
       NOTIFICATION_SERVICE_URL: http://notification-service:8003
       VIDEO_SERVICE_URL: http://video-service:8001
       REDIS_URL: redis://redis:6379/0
@@ -367,6 +377,8 @@ services:
     build:
       context: ../../portal
       dockerfile: Dockerfile
+      args:
+        AUTH_INTERNAL_URL: ${AUTH_INTERNAL_URL:-http://auth-service:8000}
     ports:
       - "3002:3001"
     environment:
@@ -425,7 +437,7 @@ services:
   grafana:
     image: grafana/grafana:latest
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
     ports:
       - "3001:3000"

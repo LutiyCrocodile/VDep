@@ -49,6 +49,7 @@ export default function WatchPage() {
   const [videoDuration, setVideoDuration] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [playlistUrl, setPlaylistUrl] = useState<string>('');
+  const [playerError, setPlayerError] = useState('');
   const [likesCount, setLikesCount] = useState(0);
   const [userLiked, setUserLiked] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
@@ -72,6 +73,8 @@ export default function WatchPage() {
     setPlayerReady(false);
     setMouseActive(true);
     setAvailableQualities([]);
+    setPlaylistUrl('');
+    setPlayerError('');
     viewRecordedRef.current = false; // Reset view flag for new video
     if (hlsRef.current) {
       hlsRef.current.destroy();
@@ -123,23 +126,31 @@ export default function WatchPage() {
     };
   }, []);
 
-  // Fetch signed playlist URL
-  useEffect(() => {
-    const fetchPlaylist = async () => {
-      if (!videoId) return;
-      try {
-        const url = await videosAPI.getPlaylist(videoId);
-        setPlaylistUrl(url);
-      } catch (err) {
-        console.log('Playlist not ready yet');
-      }
-    };
-    fetchPlaylist();
-  }, [videoId, video?.status]);
+  const resolvePlaylistUrl = async (videoData: Video) => {
+    if (videoData.status !== 'ready') {
+      setPlaylistUrl('');
+      return;
+    }
+    if (videoData.hls_playlist_url?.startsWith('http')) {
+      setPlaylistUrl(videoData.hls_playlist_url);
+      return;
+    }
+    try {
+      const url = await videosAPI.getPlaylist(videoId!);
+      setPlaylistUrl(url);
+    } catch (err) {
+      console.error('Playlist fetch failed:', err);
+      setPlayerError('Плейлист недоступен. Проверьте, что обработка видео завершена.');
+    }
+  };
 
   // Initialize HLS and handle play
   const handlePlay = async () => {
-    if (!playlistUrl) return;
+    if (!playlistUrl) {
+      setPlayerError('Видео ещё обрабатывается или плейлист недоступен.');
+      return;
+    }
+    setPlayerError('');
     
     const videoElement = videoRef.current;
     if (!videoElement) return;
@@ -167,16 +178,14 @@ export default function WatchPage() {
     if (Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
-        lowLatencyMode: true,
-        debug: true,
-        startLevel: 0, // Start with lowest quality
+        lowLatencyMode: false,
+        debug: false,
+        startLevel: -1,
       });
       hlsRef.current = hls;
 
-      hls.on(Hls.Events.MEDIA_ATTACHED, () => {
-        console.log('HLS attached, loading source...');
-        hls.loadSource(playlistUrl);
-      });
+      hls.loadSource(playlistUrl);
+      hls.attachMedia(videoElement);
 
       hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
         console.log('Manifest parsed, levels:', data.levels.length);
@@ -233,16 +242,14 @@ export default function WatchPage() {
         checkBuffered();
       });
 
-      hls.on(Hls.Events.ERROR, (event, data) => {
+      hls.on(Hls.Events.ERROR, (_event, data) => {
         console.error('HLS error:', data);
         if (data.fatal) {
           setIsVideoLoading(false);
+          setPlayerError('Ошибка воспроизведения. Обновите страницу или попробуйте позже.');
         }
       });
 
-      hls.attachMedia(videoElement);
-      
-      // Start polling after a short delay
       setTimeout(pollBuffer, 500);
 
     } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
@@ -384,31 +391,28 @@ export default function WatchPage() {
         console.log('Video data received:', data);
         console.log('Views count:', data.views_count, typeof data.views_count);
         setVideo(data);
+        await resolvePlaylistUrl(data);
 
-        // Fetch likes
-        const likesData = await videosAPI.getVideoLikes(videoId);
-        setLikesCount(likesData.likes_count);
-        setUserLiked(likesData.user_liked);
-        
-        // Check subscription if channel exists
-        if (data.channel_id) {
-          const subData = await channelsAPI.isSubscribed(data.channel_id);
-          setIsSubscribed(subData.is_subscribed);
+        try {
+          const likesData = await videosAPI.getVideoLikes(videoId);
+          setLikesCount(likesData.likes_count);
+          setUserLiked(likesData.user_liked);
+        } catch (err) {
+          console.warn('Likes unavailable:', err);
         }
-      } catch (err) {
-        setError('Видео не найдено');
-        // Mock data
-        setVideo({
-          id: videoId,
-          title: 'Демо видео - Обзор системы',
-          description: 'Это демонстрационное видео для тестирования интерфейса.',
-          views_count: 1500,
-          created_at: new Date().toISOString(),
-          owner_username: 'Администратор',
-          duration: 600,
-          status: 'ready',
-          hls_url: '',
-        });
+
+        try {
+          if (data.channel_id) {
+            const subData = await channelsAPI.isSubscribed(data.channel_id);
+            setIsSubscribed(subData.is_subscribed);
+          }
+        } catch {
+          /* optional */
+        }
+      } catch (err: any) {
+        const detail = err?.response?.data?.detail;
+        setError(typeof detail === 'string' ? detail : 'Видео не найдено или нет доступа');
+        setVideo(null);
       } finally {
         setIsLoading(false);
       }
@@ -419,32 +423,20 @@ export default function WatchPage() {
         const data = await videosAPI.getVideos(0, 10);
         setRelatedVideos((data.videos || []).filter((v: Video) => v.id !== videoId).slice(0, 8));
       } catch {
-        setRelatedVideos([
-          {
-            id: '2',
-            title: 'Совещание отдела имущества - 2024',
-            views_count: 890,
-            created_at: new Date(Date.now() - 86400000).toISOString(),
-            owner_username: 'Менеджер',
-            duration: 3600,
-            status: 'ready',
-          },
-          {
-            id: '3',
-            title: 'Инструкция по работе с системой',
-            views_count: 2100,
-            created_at: new Date(Date.now() - 172800000).toISOString(),
-            owner_username: 'HR',
-            duration: 900,
-            status: 'ready',
-          },
-        ]);
+        setRelatedVideos([]);
       }
     };
 
     fetchVideo();
     fetchRelated();
   }, [videoId]);
+
+  // Автовоспроизведение после готовности плейлиста
+  useEffect(() => {
+    if (!playlistUrl || video?.status !== 'ready' || playerReady || isVideoLoading) return;
+    handlePlay();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playlistUrl, video?.status]);
 
   const formatDuration = (seconds?: number) => {
     if (!seconds || isNaN(seconds)) return '0:00';
@@ -524,9 +516,15 @@ export default function WatchPage() {
                 }
               }}
             >
+              {playerError && (
+                <div className="absolute top-4 left-4 right-4 z-40 bg-red-500/20 border border-red-500/50 text-red-100 text-sm px-4 py-2 rounded-lg">
+                  {playerError}
+                </div>
+              )}
+
               <video
                 ref={videoRef}
-                className={`w-full h-full ${playerReady ? 'opacity-100' : 'opacity-0'}`}
+                className={`w-full h-full ${playerReady ? 'opacity-100' : 'opacity-30'}`}
                 poster={video.thumbnail_url || `https://via.placeholder.com/1280x720/1a1a3e/FFFFFF?text=${encodeURIComponent(video.title)}`}
                 onClick={() => {
                   // Direct pause/play on video click

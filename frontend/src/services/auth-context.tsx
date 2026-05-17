@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { authAPI } from './api';
+import { getPortalLoginUrl } from '@/lib/portal-url';
 
 export interface User {
   id: string;
@@ -89,9 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('refresh_token');
     setUser(null);
     setIsAuthenticated(false);
-    const portal =
-      (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_PORTAL_URL) || 'http://localhost:3002';
-    window.location.href = `${portal.replace(/\/$/, '')}/login`;
+    window.location.href = getPortalLoginUrl();
   };
 
   return (

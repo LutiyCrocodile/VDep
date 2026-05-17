@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, UUID, Integer, BigInteger, Interval, ARRAY, text
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, UUID, Integer, BigInteger, Interval, ARRAY, text, UniqueConstraint
 from typing import AsyncGenerator, List
 import uuid
 import logging
@@ -465,6 +465,27 @@ class Video(Base):
             query = f"UPDATE videos SET {', '.join(update_fields)} WHERE id = :id"
             await db.execute(text(query), params)
             await db.commit()
+
+class VideoLike(Base):
+    __tablename__ = "video_likes"
+    __table_args__ = (UniqueConstraint("video_id", "user_id", name="uq_video_likes_video_user"),)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    video_id = Column(UUID(as_uuid=True), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class VideoView(Base):
+    __tablename__ = "video_views"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    video_id = Column(UUID(as_uuid=True), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), nullable=True)
+    session_id = Column(String(255), nullable=True)
+    watched_duration = Column(Interval, nullable=True)
+    viewed_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
 
 class VideoUserAccess(Base):
     __tablename__ = "video_user_access"

@@ -946,9 +946,11 @@ find $BACKUP_DIR -name "*.gz" -mtime +7 -delete
 
 ```
 dgi-portal/
-├── docker-compose.prod.yml
-├── .env                    # <-- Не коммитить! Секреты
-├── .env.production.example
+├── infrastructure/
+│   └── docker/
+│       ├── docker-compose.yml
+│       ├── .env.example
+│       └── .env                # <-- не коммитировать (из .env.example)
 ├── nginx/
 │   ├── nginx.conf
 │   └── ssl/

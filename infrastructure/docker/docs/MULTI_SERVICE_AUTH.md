@@ -117,8 +117,8 @@ perms = await auth_client.get_user_service_permissions(user_id)
 
 ### 2. Environment
 ```bash
-# Скопировать и заполнить
-infrastructure/docker/.env.production.example → .env
+# Скопировать и заполнить (из каталога infrastructure/docker)
+cp .env.example .env
 
 # Генерация секретов:
 openssl rand -hex 32  # SECRET_KEY

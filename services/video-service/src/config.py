@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     minio_bucket: str = os.getenv("MINIO_BUCKET", "videos")
     minio_secure: bool = os.getenv("MINIO_SECURE", "false").lower() == "true"
     minio_external_endpoint: str = os.getenv("MINIO_EXTERNAL_ENDPOINT", "localhost:9000")  # For frontend access
+    # Публичный URL video-service для браузера (HLS/превью через /media — без CORS MinIO)
+    public_video_api_url: str = os.getenv("PUBLIC_VIDEO_API_URL", "http://localhost:8001")
+    public_media_via_api: bool = os.getenv("PUBLIC_MEDIA_VIA_API", "true").lower() == "true"
 
     # Auth service
     auth_service_url: str = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8000")
