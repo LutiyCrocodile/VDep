@@ -153,10 +153,8 @@ graph TD
     UI -->|10. Разделение на чанки| Chunker[Chunk Splitter]
     Chunker -->|11. Чанки 5MB| UI
     
-    loop Загрузка чанков
-        UI -->|12. PUT чанка| MinIO
-        MinIO -->|13. Прогресс| UI
-    end
+    UI -->|12. PUT чанка| MinIO
+    MinIO -->|13. Прогресс| UI
     
     UI -->|14. POST /complete| VS
     VS -->|15. Обновление статуса: uploaded| D1
@@ -233,7 +231,7 @@ graph TD
 ```mermaid
 graph TD
     User[Пользователь] -->|1. Запрос страницы видео| UI[Frontend]
-    UI -->|2. GET /videos/{id}| VS[Video Service]
+    UI -->|"2. GET /videos/{id}"| VS[Video Service]
     
     VS -->|3. Проверка токена| AS[Auth Service]
     AS -->|4. Разрешения пользователя| VS
@@ -323,7 +321,7 @@ graph TD
     SS -->|15. Обновление статуса: live| D1
     
     Viewer[Зритель] -->|16. Запрос стрима| UI[Frontend]
-    UI -->|17. GET /streams/{id}| SS
+    UI -->|"17. GET /streams/{id}"| SS
     SS -->|18. Метаданные стрима| D1
     D1 -->|19. Данные стрима| SS
     SS -->|20. HLS URL| UI
@@ -404,7 +402,7 @@ graph TD
     
     subgraph Поиск по субтитрам
         User -->|17. Поиск в субтитрах| UI
-        UI -->|18. GET /videos/{id}/subtitles/search| SS
+        UI -->|"18. GET /videos/{id}/subtitles/search"| SS
         SS -->|19. Поиск по WebVTT| SubSearch[Subtitle Search]
         SubSearch -->|20. Таймкоды совпадений| SS
         SS -->|21. Результаты с таймкодами| UI
@@ -460,7 +458,7 @@ graph TD
     UI3 -->|20| User3[Пользователь 3]
     
     User1 -->|21. Отметить как прочитанное| UI1
-    UI1 -->|22. PUT /notifications/{id}/read| NS
+    UI1 -->|"22. PUT /notifications/{id}/read"| NS
     NS -->|23. Обновление is_read| D1
     
     subgraph Очередь email
@@ -557,12 +555,13 @@ graph TD
     API -->|2| Auth[Auth Middleware]
     Auth -->|3| ValidateToken[Token Validation]
     ValidateToken -->|4| AuthService[Auth Service Call]
-    AuthService -->|5| UserID| Auth
+    AuthService -->|5: UserID - Auth| End(( ))
     
     Auth -->|6| RBAC[RBAC Check]
-    RBAC -->|7| Permission Check| D1[(PostgreSQL)]
-    D1 -->|8| Permissions| RBAC
-    RBAC -->|9| Access Granted| API
+    RBAC -->|7| PC["Permission Check"]
+    PC --> D1[(PostgreSQL)]
+    D1 -->|8 Permissions| RBAC
+    RBAC -->|9 Access Granted| API
     
     API -->|10| Controller[Controller Layer]
     
@@ -570,49 +569,49 @@ graph TD
         Controller -->|POST /upload/init| UploadInit[Upload Init]
         Controller -->|POST /complete| UploadComplete[Upload Complete]
         Controller -->|GET /videos| ListVideos[List Videos]
-        Controller -->|GET /videos/{id}| GetVideo[Get Video]
+        Controller -->|"GET /videos/{id}"| GetVideo[Get Video]
         Controller -->|GET /signed-url| SignedURL[Signed URL]
     end
     
     UploadInit -->|11| Service[Service Layer]
     Service -->|12| CreateVideo[Create Video Record]
-    CreateVideo -->|13| Insert| D1
-    D1 -->|14| Video ID| Service
+    CreateVideo -->|13 Insert| D1
+    D1 -->|14 Video ID| Service
     
     Service -->|15| MinIOClient[MinIO Client]
-    MinIOClient -->|16| Presigned URL| MinIO[MinIO]
-    MinIO -->|17| URL| MinIOClient
-    MinIOClient -->|18| Upload URL| Service
+    MinIOClient -->|16 Presigned URL| MinIO[MinIO]
+    MinIO -->|17 URL| MinIOClient
+    MinIOClient -->|18 Upload URL| Service
     
-    Service -->|19| Response| API
-    API -->|20| JSON Response| Client[Client]
+    Service -->|19 Response| API
+    API -->|20 JSON Response| Client[Client]
     
     UploadComplete -->|21| Service
     Service -->|22| UpdateStatus[Update Status]
-    UpdateStatus -->|23| Update| D1
+    UpdateStatus -->|23 Update| D1
     
     Service -->|24| CeleryTask[Celery Task]
-    CeleryTask -->|25| Send Task| RQ[RabbitMQ]
+    CeleryTask -->|25 Send Task| RQ[RabbitMQ]
     
     ListVideos -->|26| Service
     Service -->|27| QueryVideos[Query Videos]
-    QueryVideos -->|28| Select| D1
-    D1 -->|29| Videos List| Service
-    Service -->|30| Response| API
+    QueryVideos -->|28 Select| D1
+    D1 -->|29 Videos List| Service
+    Service -->|30 Response| API
     
     GetVideo -->|31| Service
     Service -->|32| GetVideoByID[Get Video by ID]
-    GetVideoByID -->|33| Select| D1
-    D1 -->|34| Video Data| Service
+    GetVideoByID -->|33 Select| D1
+    D1 -->|34 Video Data| Service
     Service -->|35| CheckAccess[Check Access]
-    CheckAccess -->|36| RBAC| Service
-    Service -->|37| Response| API
+    CheckAccess -->|36 RBAC| Service
+    Service -->|37 Response| API
     
     SignedURL -->|38| Service
     Service -->|39| GenerateSignedURL[Generate Signed URL]
-    GenerateSignedURL -->|40| Presigned| MinIO
-    MinIO -->|41| Signed URL| Service
-    Service -->|42| Response| API
+    GenerateSignedURL -->|40 Presigned| MinIO
+    MinIO -->|41 Signed URL| Service
+    Service -->|42 Response| API
     
     style API fill:#e1f5ff
     style Service fill:#e1f5ff
@@ -723,44 +722,44 @@ graph TD
     BuildQuery -->|5| ESQuery[Elasticsearch Query]
     ESQuery -->|6| ES[Elasticsearch]
     
-    ES -->|7| Search Index| Index[Search Index]
-    Index -->|8| Results| ES
-    ES -->|9| Hits with Scores| Service
+    ES -->|7 Search Index| Index[Search Index]
+    Index -->|8 Results| ES
+    ES -->|9 Hits with Scores| Service
     
     Service -->|10| FilterByAccess[Filter by Access]
-    FilterByAccess -->|11| Get User Permissions| AS[Auth Service]
-    AS -->|12| Permissions| FilterByAccess
-    FilterByAccess -->|13| Filtered Results| Service
+    FilterByAccess -->|11 Get User Permissions| AS[Auth Service]
+    AS -->|12 Permissions| FilterByAccess
+    FilterByAccess -->|13 Filtered Results| Service
     
     Service -->|14| GetVideoMetadata[Get Metadata]
-    GetVideoMetadata -->|15| Query| D1[(PostgreSQL)]
-    D1 -->|16| Video Data| Service
+    GetVideoMetadata -->|15 Query| D1[(PostgreSQL)]
+    D1 -->|16 Video Data| Service
     
     Service -->|17| FormatResponse[Format Response]
-    FormatResponse -->|18| JSON| API
-    API -->|19| Response| Client[Client]
+    FormatResponse -->|18 JSON| API
+    API -->|19 Response| Client[Client]
     
     Index -->|20| Service
-    Service -->|21| GetVideoData| D1
-    D1 -->|22| Video Data| Service
+    Service -->|21 GetVideoData| D1
+    D1 -->|22 Video Data| Service
     
-    Service -->|23| GetSubtitles| D1
-    D1 -->|24| Subtitles| Service
+    Service -->|23 GetSubtitles| D1
+    D1 -->|24 Subtitles| Service
     
     Service -->|25| BuildDocument[Build ES Document]
-    BuildDocument -->|26| Index Document| ES
-    ES -->|27| Indexed| Service
+    BuildDocument -->|26 Index Document| ES
+    ES -->|27 Indexed| Service
     
     Subtitles -->|28| Service
-    Service -->|29| GetSubtitles| D1
-    D1 -->|30| WebVTT| Service
+    Service -->|29 GetSubtitles| D1
+    D1 -->|30 WebVTT| Service
     Service -->|31| ParseWebVTT[Parse WebVTT]
-    ParseWebVTT -->|32| Subtitle Entries| Service
-    Service -->|33| Response| API
+    ParseWebVTT -->|32 Subtitle Entries| Service
+    Service -->|33 Response| API
     
     DeleteIndex -->|34| Service
-    Service -->|35| Delete Document| ES
-    ES -->|36| Deleted| Service
+    Service -->|35 Delete Document| ES
+    ES -->|36 Deleted| Service
     
     style API fill:#e1f5ff
     style Service fill:#e1f5ff
