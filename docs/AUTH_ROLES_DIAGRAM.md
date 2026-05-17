@@ -302,7 +302,7 @@ mindmap
         send create_chat moderate
       user
         send
-    Дашборд
+    Визуализация отчетов
       admin
         view edit admin
       editor
