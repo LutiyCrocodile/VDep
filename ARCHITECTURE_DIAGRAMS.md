@@ -265,7 +265,6 @@ graph TB
     subgraph "Слои безопасности"
         subgraph "Сетевой уровень"
             Firewall[UFW Firewall<br/>Порты: 22, 80, 443, 1935]
-            Cloudflare[Cloudflare<br/>DDoS Protection<br/>WAF]
         end
         
         subgraph "Транспортный уровень"
@@ -295,13 +294,12 @@ graph TB
         AuthBypass[Authentication Bypass]
     end
     
-    DDoS -->|Блокируется| Cloudflare
     SQLi -->|Предотвращается| InputVal
     XSS -->|Предотвращается| InputVal
     CSRF -->|Предотвращается| JWT
     AuthBypass -->|Предотвращается| RBAC
     
-    Cloudflare -->|Защищённый трафик| Firewall
+    DDoS --> Firewall
     Firewall -->|Фильтрованный трафик| SSL
     SSL -->|Зашифрованный трафик| JWT
     JWT -->|Аутентифицированный запрос| RBAC
@@ -312,7 +310,6 @@ graph TB
     Hashing -->|Хешированные пароли| Audit
     Audit -->|Логи безопасности| SignedURL
     
-    style Cloudflare fill:#e1f5ff
     style Firewall fill:#e1f5ff
     style SSL fill:#e1f5ff
     style JWT fill:#e1f5ff
