@@ -948,9 +948,9 @@ graph TB
     Prometheus --> Grafana
     Grafana --> ELK
     
-    GitHub_Actions --> Docker
+
     Certbot --> Nginx
-    Cloudflare --> Nginx
+
     
     style React fill:#e1f5ff
     style FastAPI fill:#e1f5ff
