@@ -285,7 +285,7 @@ sequenceDiagram
 
 ```mermaid
 mindmap
-  root((ДГИ RBAC))
+  root((RBAC))
     Видеохостинг
       admin
         upload view_private manage_all stream moderate audit
