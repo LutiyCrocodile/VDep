@@ -28,7 +28,7 @@ flowchart TB
   JWT -->|"payload.services"| SVC
   Me --> USR
 
-  subgraph Consumers["Микросервисы"]
+  subgraph Consumers["/Микросервисы"]
     V["video-service<br/>+ streaming-service"]
     M["messenger-service"]
     D["dashboard-service"]
@@ -36,7 +36,7 @@ flowchart TB
   end
 
   JWT --> V & M & D & P
-  V & M & D & P -->|"GET /internal/users/{id}/services/{slug}"| Auth
+  V & M & D & P -->|"GET/internal/users/{id}/services/{slug}"| Auth
 ```
 
 **JWT (фрагмент):** для каждого `slug` сервиса, к которому у пользователя есть запись в `user_service_roles`, в токен попадают `role` и список `perms`.
