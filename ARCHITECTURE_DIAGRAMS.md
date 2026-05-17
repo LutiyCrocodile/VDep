@@ -948,7 +948,7 @@ graph TB
     Prometheus --> Grafana
     Grafana --> ELK
     
-    "GitHub Actions" --> Docker
+    GitHub_Actions --> Docker
     Certbot --> Nginx
     Cloudflare --> Nginx
     
