@@ -118,7 +118,6 @@ graph TB
 graph TB
     subgraph "Интернет"
         User[Пользователи]
-        Cloudflare[Cloudflare CDN<br/>DDoS Protection]
     end
     
     subgraph "Выделенный сервер<br/>Selectel"
@@ -178,13 +177,12 @@ graph TB
     end
     
     subgraph "Внешние сервисы"
-        AD[Active Directory<br/>dgi.mos.ru]
+        AD[Active Directory]
         REG[REG.RU<br/>DNS]
         SMTP[SMTP Server]
     end
     
-    User -->|HTTPS| Cloudflare
-    Cloudflare -->|HTTPS| NginxC
+    User -->|HTTPS| NginxC
     
     NginxC -->|Routing| AuthC
     NginxC -->|Routing| VideoC
@@ -239,9 +237,7 @@ graph TB
     MinIOVol -->|RAID 1| Disk2
     
     User -->|DNS Query| REG
-    REG -->|A Record| Cloudflare
     
-    style Cloudflare fill:#e1f5ff
     style NginxC fill:#e1f5ff
     style AuthC fill:#e1f5ff
     style VideoC fill:#e1f5ff
