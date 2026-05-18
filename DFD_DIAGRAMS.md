@@ -268,22 +268,16 @@ graph TD
     Nginx -->|22. HLS поток| VP
     VP -->|23. Воспроизведение| User
     
-    VP -->|24. Запрос субтитров| SS[Search Service]
-    SS -->|25. Получение субтитров| D1
-    D1 -->|26. WebVTT контент| SS
-    SS -->|27. Субтитры| VP
+    VP -->|24. Отправка статистики| VS
+    VS -->|25. Запись в video_views| D1
     
-    VP -->|28. Отправка статистики| VS
-    VS -->|29. Запись в video_views| D1
-    
-    VP -->|30. Обновление прогресса| D1
+    VP -->|26. Обновление прогресса| D1
     
     subgraph Кэширование
         Cache[Redis Cache]
     end
     
     style VS fill:#e1f5ff
-    style SS fill:#e1f5ff
     style VP fill:#e1f5ff
     style D1 fill:#fff4e1
     style MinIO fill:#fff4e1
