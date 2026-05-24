@@ -6,6 +6,11 @@ import { SidebarProvider } from '@/contexts/SidebarContext'
 export const metadata: Metadata = {
   title: 'Видеохостинг ДГИ',
   description: 'Система видеохостинга для Департамента городского имущества Москвы',
+  icons: {
+    icon: '/icon.ico',
+    shortcut: '/icon.ico',
+    apple: '/icon.ico',
+  },
 }
 
 export default function RootLayout({

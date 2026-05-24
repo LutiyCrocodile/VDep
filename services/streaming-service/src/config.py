@@ -12,6 +12,7 @@ class Settings(BaseSettings):
 
     # Notification service
     notification_service_url: str = os.getenv("NOTIFICATION_SERVICE_URL", "http://notification-service:8003")
+    frontend_public_url: str = os.getenv("FRONTEND_PUBLIC_URL", "http://localhost:3000").rstrip("/")
 
     # Video service (channel check + archive upload)
     video_service_url: str = os.getenv("VIDEO_SERVICE_URL", "http://video-service:8001")

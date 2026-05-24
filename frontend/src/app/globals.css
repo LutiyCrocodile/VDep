@@ -89,4 +89,10 @@
     background: linear-gradient(135deg, var(--dgi-primary) 0%, var(--dgi-primary-mid) 100%);
     @apply text-white;
   }
+  .dgi-page-title {
+    @apply text-3xl font-bold text-dgi-text mb-6 font-heading;
+  }
+  .dgi-page-heading {
+    @apply text-2xl font-bold text-dgi-text font-heading;
+  }
 }

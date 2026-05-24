@@ -162,8 +162,8 @@ export default function PublicChannelPage() {
         <main className="ml-64 pt-14 min-h-screen">
           <div className="max-w-4xl mx-auto p-6">
             <div className="bg-dgi-surface/80 backdrop-blur-sm rounded-2xl p-8 border border-dgi-primary/30 text-center">
-              <h1 className="text-2xl font-bold text-white mb-4">Канал не найден</h1>
-              <p className="text-gray-400 mb-6">Канал с именем @{handle} не существует</p>
+              <h1 className="dgi-page-heading mb-4">Канал не найден</h1>
+              <p className="text-dgi-muted mb-6">Канал с именем @{handle} не существует</p>
               <Link
                 href="/"
                 className="bg-gradient-to-r from-dgi-primary to-dgi-primary-mid hover:from-dgi-primary-mid hover:to-dgi-primary-dark text-white px-6 py-3 rounded-lg font-medium transition-all"
@@ -203,8 +203,8 @@ export default function PublicChannelPage() {
                     <span className="text-dgi-primary" title="Проверенный канал">✓</span>
                   )}
                 </div>
-                <p className="text-gray-400">@{channel.handle}</p>
-                <p className="text-gray-400 text-sm mt-1">
+                <p className="text-dgi-muted">@{channel.handle}</p>
+                <p className="text-dgi-muted text-sm mt-1">
                   {channel.subscribers_count?.toLocaleString() || 0} подписчиков
                 </p>
               </div>
@@ -221,7 +221,7 @@ export default function PublicChannelPage() {
                     onClick={handleSubscribe}
                     className={`px-6 py-2 rounded-lg font-medium transition-all ${
                       isSubscribed
-                        ? 'bg-gray-600 text-white hover:bg-gray-500'
+                        ? 'bg-dgi-surface-hover text-dgi-text border border-dgi-border hover:bg-gray-200'
                         : 'bg-gradient-to-r from-dgi-primary to-dgi-primary-mid hover:from-dgi-primary-mid hover:to-dgi-primary-dark text-white'
                     }`}
                   >
@@ -232,7 +232,7 @@ export default function PublicChannelPage() {
             </div>
             
             {channel.description && (
-              <p className="text-gray-300 mb-6 max-w-2xl">{channel.description}</p>
+              <p className="text-dgi-muted mb-6 max-w-2xl">{channel.description}</p>
             )}
 
             {/* Videos Section */}
@@ -240,7 +240,7 @@ export default function PublicChannelPage() {
               <h2 className="text-xl font-bold text-dgi-text mb-4 font-heading">Видео</h2>
               {videos.length === 0 ? (
                 <div className="text-center py-12 bg-dgi-surface/50 rounded-2xl">
-                  <p className="text-gray-400">На канале пока нет видео</p>
+                  <p className="text-dgi-muted">На канале пока нет видео</p>
                   {isOwnChannel && (
                     <Link
                       href="/upload"
@@ -279,7 +279,7 @@ export default function PublicChannelPage() {
       {videoToDelete && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-dgi-surface border border-dgi-primary/30 rounded-2xl p-6 max-w-md w-full shadow-2xl">
-            <h3 className="text-xl font-bold text-white mb-4">Удалить видео?</h3>
+            <h3 className="text-xl font-bold text-dgi-text mb-4 font-heading">Удалить видео?</h3>
             <p className="text-dgi-muted mb-6">
               Вы уверены, что хотите удалить видео &quot;{videoToDelete.title}&quot;? Это действие нельзя отменить.
             </p>

@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     # Auth service
     auth_service_url: str = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8000")
     internal_auth_token: str = os.getenv("INTERNAL_AUTH_TOKEN", "internal-secret-token")
+    notification_service_url: str = os.getenv(
+        "NOTIFICATION_SERVICE_URL", "http://notification-service:8003"
+    )
+    frontend_public_url: str = os.getenv("FRONTEND_PUBLIC_URL", "http://localhost:3000").rstrip("/")
 
     # Upload settings
     upload_expiry_seconds: int = int(os.getenv("UPLOAD_EXPIRY_SECONDS", "3600"))

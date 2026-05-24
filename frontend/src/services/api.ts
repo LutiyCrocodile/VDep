@@ -3,6 +3,8 @@ import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'ax
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const VIDEO_API_URL = process.env.NEXT_PUBLIC_VIDEO_API_URL || 'http://localhost:8001';
 const STREAMING_API_URL = process.env.NEXT_PUBLIC_STREAMING_API_URL || 'http://localhost:8002';
+const NOTIFICATION_API_URL =
+  process.env.NEXT_PUBLIC_NOTIFICATION_API_URL || 'http://localhost:8003';
 
 // Create axios instances
 const apiClient: AxiosInstance = axios.create({
@@ -29,8 +31,29 @@ const streamingApiClient: AxiosInstance = axios.create({
   timeout: 30000,
 });
 
+const notificationApiClient: AxiosInstance = axios.create({
+  baseURL: NOTIFICATION_API_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  timeout: 30000,
+});
+
 // Add auth interceptor to video client
 videoApiClient.interceptors.request.use(
+  (config: InternalAxiosRequestConfig) => {
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('access_token');
+      if (token && config.headers) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+notificationApiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     if (typeof window !== 'undefined') {
       const token = localStorage.getItem('access_token');
@@ -367,6 +390,26 @@ export const streamsAPI = {
     return response.data;
   },
 
+  sendPresence: async (streamId: string) => {
+    const response = await streamingApiClient.post(`/streams/${streamId}/presence`);
+    return response.data;
+  },
+
+  leavePresence: async (streamId: string) => {
+    const response = await streamingApiClient.post(`/streams/${streamId}/presence/leave`);
+    return response.data;
+  },
+
+  likeStream: async (streamId: string) => {
+    const response = await streamingApiClient.post(`/streams/${streamId}/like`);
+    return response.data;
+  },
+
+  unlikeStream: async (streamId: string) => {
+    const response = await streamingApiClient.delete(`/streams/${streamId}/like`);
+    return response.data;
+  },
+
   createStream: async (data: {
     title: string;
     description?: string;
@@ -472,23 +515,25 @@ export const channelsAPI = {
 
 // Notifications API
 export const notificationsAPI = {
-  getNotifications: async () => {
-    const response = await apiClient.get('/notifications');
+  getNotifications: async (skip = 0, limit = 20) => {
+    const response = await notificationApiClient.get(
+      `/notifications?skip=${skip}&limit=${limit}`
+    );
     return response.data;
   },
-  
+
   getUnreadCount: async () => {
-    const response = await apiClient.get('/notifications/unread-count');
+    const response = await notificationApiClient.get('/notifications/unread-count');
     return response.data;
   },
-  
+
   markAsRead: async (notificationId: string) => {
-    const response = await apiClient.put(`/notifications/${notificationId}/read`);
+    const response = await notificationApiClient.put(`/notifications/${notificationId}/read`);
     return response.data;
   },
-  
+
   markAllAsRead: async () => {
-    const response = await apiClient.put('/notifications/read-all');
+    const response = await notificationApiClient.post('/notifications/mark-all-read');
     return response.data;
   },
 };

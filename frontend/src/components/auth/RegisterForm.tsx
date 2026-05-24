@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/services/auth';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function RegisterForm() {
   const [formData, setFormData] = useState({
@@ -41,11 +42,7 @@ export default function RegisterForm() {
       <div className="bg-dgi-surface p-8 rounded-2xl shadow-lg w-full max-w-md border border-dgi-border">
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-2 mb-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-dgi-primary to-dgi-primary-mid rounded-xl flex items-center justify-center shadow-md">
-              <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" />
-              </svg>
-            </div>
+            <Image src="/icon.ico" alt="" width={48} height={48} className="rounded-xl shadow-md" priority />
             <span className="text-2xl font-bold text-dgi-text font-heading">Видеохостинг ДГИ</span>
           </div>
           <h1 className="text-2xl font-semibold text-dgi-text font-heading">Регистрация</h1>

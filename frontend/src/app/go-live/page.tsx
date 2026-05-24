@@ -333,7 +333,7 @@ export default function GoLivePage() {
               {archivingSessions.map((item) => (
                 <div key={item.stream_id} className="dgi-card p-6 border-l-4 border-l-amber-500">
                   <h2 className="text-lg font-semibold text-dgi-text mb-1 font-heading">
-                    Сохранение записи
+                    Сохранение записи (фон)
                   </h2>
                   <p className="text-dgi-text mb-3">{item.title}</p>
                   {item.phase === 'failed' ? (

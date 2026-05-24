@@ -130,11 +130,15 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
       SMTP_SERVER: ${SMTP_SERVER:-smtp.dgi.mos.ru}
-      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USE_SSL: ${SMTP_USE_SSL:-true}
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-notifications@video.dgi.mos.ru}
       AUTH_SERVICE_URL: http://auth-service:8000
+      VIDEO_SERVICE_URL: http://video-service:8001
+      INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-internal-secret-token}
+      FRONTEND_PUBLIC_URL: ${FRONTEND_PUBLIC_URL:-http://localhost:3000}
     ports:
       - "8003:8003"
     depends_on:
@@ -143,6 +147,8 @@ services:
       redis:
         condition: service_healthy
       auth-service:
+        condition: service_healthy
+      video-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
@@ -236,6 +242,8 @@ services:
       PUBLIC_MEDIA_VIA_API: ${PUBLIC_MEDIA_VIA_API:-true}
       AUTH_SERVICE_URL: http://auth-service:8000
       INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-internal-secret-token}
+      NOTIFICATION_SERVICE_URL: http://notification-service:8003
+      FRONTEND_PUBLIC_URL: ${FRONTEND_PUBLIC_URL:-http://localhost:3000}
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
@@ -278,12 +286,19 @@ services:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
+      INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-internal-secret-token}
+      NOTIFICATION_SERVICE_URL: http://notification-service:8003
+      FRONTEND_PUBLIC_URL: ${FRONTEND_PUBLIC_URL:-http://localhost:3000}
     depends_on:
       redis:
         condition: service_healthy
       minio:
         condition: service_healthy
       db:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      video-service:
         condition: service_healthy
     volumes:
       - /tmp  # For temporary files during transcoding
@@ -315,6 +330,7 @@ services:
       INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-internal-secret-token}
       NOTIFICATION_SERVICE_URL: http://notification-service:8003
       VIDEO_SERVICE_URL: http://video-service:8001
+      FRONTEND_PUBLIC_URL: ${FRONTEND_PUBLIC_URL:-http://localhost:3000}
       REDIS_URL: redis://redis:6379/0
       PUBLIC_HLS_BASE: ${PUBLIC_HLS_BASE:-http://localhost:8888}
       PUBLIC_RTMP_HOST: ${PUBLIC_RTMP_HOST:-localhost}
@@ -362,6 +378,7 @@ services:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
       - NEXT_PUBLIC_VIDEO_API_URL=http://localhost:8001
       - NEXT_PUBLIC_STREAMING_API_URL=http://localhost:8002
+      - NEXT_PUBLIC_NOTIFICATION_API_URL=http://localhost:8003
       - NEXT_PUBLIC_HLS_PUBLIC_BASE=http://localhost:8888
       - NEXT_PUBLIC_RTMP_HOST=localhost
       - NEXT_PUBLIC_RTMP_PORT=1935

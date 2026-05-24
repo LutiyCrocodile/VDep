@@ -291,7 +291,7 @@ export default function UploadPage() {
         <Header />
         <main className={`pt-14 min-h-screen flex items-center justify-center transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
           <div className="text-center">
-            <p className="text-white text-xl mb-4">Необходимо войти в систему</p>
+            <p className="text-dgi-text text-xl mb-4">Необходимо войти в систему</p>
             <button
               onClick={() => router.push('/login')}
               className="bg-gradient-to-r from-dgi-primary to-dgi-primary-mid hover:from-dgi-primary-mid hover:to-dgi-primary-dark text-white px-6 py-3 rounded-lg font-medium transition-all"
@@ -315,7 +315,7 @@ export default function UploadPage() {
 
           {!userChannel && !loadingChannel && (
             <div className="bg-dgi-surface/80 backdrop-blur-sm rounded-2xl p-6 border border-dgi-primary/30 mb-6">
-              <p className="text-white mb-4">Создайте канал для загрузки видео</p>
+              <p className="text-dgi-text mb-4">Создайте канал для загрузки видео</p>
               <button
                 onClick={() => router.push('/create-channel')}
                 className="bg-gradient-to-r from-dgi-primary to-dgi-primary-mid hover:from-dgi-primary-mid hover:to-dgi-primary-dark text-white px-6 py-2 rounded-lg font-medium transition-all"
@@ -348,8 +348,8 @@ export default function UploadPage() {
                   <svg className="w-12 h-12 mx-auto text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <p className="text-white font-medium">{file.name}</p>
-                  <p className="text-gray-400 text-sm">{formatFileSize(file.size)}</p>
+                  <p className="text-dgi-text font-medium">{file.name}</p>
+                  <p className="text-dgi-muted text-sm">{formatFileSize(file.size)}</p>
                   <button
                     type="button"
                     onClick={() => setFile(null)}
@@ -361,21 +361,21 @@ export default function UploadPage() {
               ) : (
                 <div className="space-y-4">
                   <div className="w-16 h-16 bg-dgi-surface/80 rounded-full flex items-center justify-center mx-auto">
-                    <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-8 h-8 text-dgi-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
                   </div>
                   <div>
-                    <p className="text-white font-medium">Перетащите видео сюда</p>
-                    <p className="text-gray-400 text-sm mt-1">или нажмите для выбора файла</p>
+                    <p className="text-dgi-text font-medium">Перетащите видео сюда</p>
+                    <p className="text-dgi-muted text-sm mt-1">или нажмите для выбора файла</p>
                   </div>
-                  <p className="text-gray-500 text-xs">MP4, AVI, MOV до 10GB</p>
+                  <p className="text-dgi-muted text-xs">MP4, AVI, MOV до 10GB</p>
                 </div>
               )}
             </div>
 
             {error && (
-              <div className="bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-lg">
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
                 {typeof error === 'string' ? error : JSON.stringify(error)}
               </div>
             )}
@@ -394,7 +394,7 @@ export default function UploadPage() {
                 required
                 maxLength={100}
               />
-              <p className="text-gray-400 text-xs mt-1 text-right">{title.length}/100</p>
+              <p className="text-dgi-muted text-xs mt-1 text-right">{title.length}/100</p>
             </div>
 
             {/* Description */}
@@ -410,7 +410,7 @@ export default function UploadPage() {
                 placeholder="Расскажите о содержании видео"
                 maxLength={5000}
               />
-              <p className="text-gray-400 text-xs mt-1 text-right">{description.length}/5000</p>
+              <p className="text-dgi-muted text-xs mt-1 text-right">{description.length}/5000</p>
             </div>
 
             {/* Classification */}
@@ -438,8 +438,8 @@ export default function UploadPage() {
                         className="mt-1 w-4 h-4 text-dgi-primary border-gray-600 focus:ring-dgi-primary"
                       />
                       <div>
-                        <p className="text-white font-medium text-sm">{option.label}</p>
-                        <p className="text-gray-400 text-xs mt-0.5">{option.description}</p>
+                        <p className="text-dgi-text font-medium text-sm">{option.label}</p>
+                        <p className="text-dgi-muted text-xs mt-0.5">{option.description}</p>
                       </div>
                     </div>
                   </label>
@@ -461,7 +461,7 @@ export default function UploadPage() {
                     value={userSearchQuery}
                     onChange={(e) => setUserSearchQuery(e.target.value)}
                     placeholder="Введите имя или username для поиска..."
-                    className="w-full px-4 py-2 bg-dgi-bg/50 border border-red-500/30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                    className="w-full px-4 py-2 dgi-input border-red-200 focus:border-red-400 focus:ring-red-200/50"
                   />
                   {isSearching && (
                     <div className="absolute right-3 top-2.5 w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
@@ -479,31 +479,31 @@ export default function UploadPage() {
 
                 {/* Hint for min chars */}
                 {userSearchQuery.length > 0 && userSearchQuery.length < 2 && !isSearching && (
-                  <p className="text-gray-500 text-xs mt-1">Введите минимум 2 символа для поиска</p>
+                  <p className="text-dgi-muted text-xs mt-1">Введите минимум 2 символа для поиска</p>
                 )}
 
                 {/* Search results */}
                 {searchResults.length > 0 && (
-                  <div className="bg-dgi-bg/80 border border-red-500/20 rounded-lg mb-3 max-h-60 overflow-y-auto">
+                  <div className="bg-white border border-red-200 rounded-lg mb-3 max-h-60 overflow-y-auto">
                     {searchResults.map((user) => (
                       <button
                         key={user.id}
                         onClick={() => addUser(user)}
-                        className="w-full text-left px-4 py-3 hover:bg-red-500/20 text-white text-sm transition-colors border-b border-red-500/10 last:border-b-0"
+                        className="w-full text-left px-4 py-3 hover:bg-red-50 text-dgi-text text-sm transition-colors border-b border-red-100 last:border-b-0"
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center text-white font-medium text-sm flex-shrink-0">
+                            <div className="w-8 h-8 rounded-full dgi-avatar flex items-center justify-center font-medium text-sm flex-shrink-0">
                               {(user.full_name || user.username || user.email || 'U')[0]?.toUpperCase() || 'U'}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="font-medium text-white truncate">{user.full_name || user.username}</p>
+                              <p className="font-medium text-dgi-text truncate">{user.full_name || user.username}</p>
                               <div className="flex items-center gap-2 mt-0.5">
-                                <p className="text-xs text-gray-400 truncate">@{user.username}</p>
+                                <p className="text-xs text-dgi-muted truncate">@{user.username}</p>
                                 {user.email && (
                                   <>
-                                    <span className="text-gray-600">•</span>
-                                    <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                                    <span className="text-dgi-muted">•</span>
+                                    <p className="text-xs text-dgi-muted truncate">{user.email}</p>
                                   </>
                                 )}
                               </div>
@@ -522,18 +522,18 @@ export default function UploadPage() {
 
                 {/* No results message */}
                 {userSearchQuery.length >= 2 && searchResults.length === 0 && !isSearching && (
-                  <p className="text-gray-500 text-xs mt-1">Пользователи не найдены</p>
+                  <p className="text-dgi-muted text-xs mt-1">Пользователи не найдены</p>
                 )}
 
                 {/* Selected users */}
                 {selectedUsers.length > 0 && (
                   <div className="space-y-2">
-                    <p className="text-gray-400 text-xs">Выбранные пользователи:</p>
+                    <p className="text-dgi-muted text-xs">Выбранные пользователи:</p>
                     <div className="flex flex-wrap gap-2">
                       {selectedUsers.map((user) => (
                         <span
                           key={user.id}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-red-500/30 text-red-200 text-xs rounded-full"
+                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-red-100 text-red-800 text-xs rounded-full border border-red-200"
                           title={`@${user.username}`}
                         >
                           <span className="font-medium">{user.full_name || user.username}</span>
@@ -563,12 +563,12 @@ export default function UploadPage() {
             {isUploading && (
               <div className="bg-dgi-surface/80 backdrop-blur-sm rounded-lg p-4 border border-dgi-primary/30">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-white text-sm">
+                  <span className="text-dgi-text text-sm font-medium">
                     {uploadProgress < 30 ? 'Подготовка...' : 
                      uploadProgress < 80 ? 'Загрузка файла...' : 
                      uploadProgress < 100 ? 'Обработка...' : 'Загружено!'}
                   </span>
-                  <span className="text-gray-400 text-sm">{uploadProgress}%</span>
+                  <span className="text-dgi-muted text-sm">{uploadProgress}%</span>
                 </div>
                 <div className="w-full h-2 bg-dgi-bg/50 rounded-full overflow-hidden">
                   <div 
@@ -576,24 +576,24 @@ export default function UploadPage() {
                     style={{ width: `${uploadProgress}%` }}
                   />
                 </div>
-                <p className="text-gray-400 text-xs mt-2">
+                <p className="text-dgi-muted text-xs mt-2">
                   {uploadProgress < 30 ? 'Инициализация загрузки...' : 
                    uploadProgress < 80 ? 'Загрузка видео на сервер...' : 
-                   uploadProgress < 100 ? 'Сохранение...' : 'Загрузка завершена! Нажмите "Опубликовать" для начала обработки.'}
+                   uploadProgress < 100 ? 'Сохранение...' : 'Загрузка завершена! Нажмите «Опубликовать» для начала обработки.'}
                 </p>
               </div>
             )}
 
             {/* Upload complete - show publish button */}
             {uploadedVideoId && !isUploading && !isPublished && (
-              <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-4">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                 <div className="flex items-center gap-3 mb-3">
-                  <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <span className="text-white font-medium">Видео успешно загружено!</span>
+                  <span className="text-green-800 font-medium">Видео успешно загружено!</span>
                 </div>
-                <p className="text-gray-400 text-sm mb-4">
+                <p className="text-dgi-muted text-sm mb-4">
                   Видео сохранено на сервере. Нажмите кнопку ниже, чтобы начать обработку и опубликовать видео.
                 </p>
                 <div className="flex gap-3">
@@ -619,7 +619,7 @@ export default function UploadPage() {
                   </button>
                   <button
                     onClick={() => router.push('/')}
-                    className="px-6 py-3 border border-gray-600 text-gray-300 hover:bg-gray-800 rounded-lg transition-all"
+                    className="px-6 py-3 border border-dgi-border text-dgi-text hover:bg-dgi-surface-hover rounded-lg transition-all"
                   >
                     Позже
                   </button>
@@ -632,21 +632,21 @@ export default function UploadPage() {
               <div className="bg-dgi-surface/80 backdrop-blur-sm rounded-lg p-4 border border-dgi-primary/30">
                 <div className="flex items-center gap-3">
                   <div className="w-5 h-5 border-2 border-dgi-primary border-t-transparent rounded-full animate-spin" />
-                  <span className="text-white">Начинаем обработку видео...</span>
+                  <span className="text-dgi-text">Начинаем обработку видео...</span>
                 </div>
               </div>
             )}
 
             {/* Published successfully */}
             {isPublished && (
-              <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-4">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                 <div className="flex items-center gap-3">
-                  <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <span className="text-white font-medium">Обработка началась!</span>
+                  <span className="text-green-800 font-medium">Обработка началась!</span>
                 </div>
-                <p className="text-gray-400 text-sm mt-2">
+                <p className="text-dgi-muted text-sm mt-2">
                   Видео поставлено в очередь на обработку. Перенаправляем на главную страницу...
                 </p>
               </div>
@@ -666,7 +666,7 @@ export default function UploadPage() {
                   type="button"
                   onClick={() => router.push('/')}
                   disabled={isUploading}
-                  className="px-6 py-3 border border-dgi-primary/30 text-gray-300 hover:bg-dgi-surface/80 rounded-lg transition-all disabled:opacity-50"
+                  className="px-6 py-3 border border-dgi-border text-dgi-text hover:bg-dgi-surface-hover rounded-lg transition-all disabled:opacity-50"
                 >
                   Отмена
                 </button>

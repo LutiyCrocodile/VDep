@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -73,9 +73,9 @@ export default function SearchPage() {
       
       <main className={`pt-14 min-h-screen bg-dgi-bg transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
         <div className="p-6">
-          <h1 className="text-white text-xl mb-4">
-            {query ? `Результаты поиска: "${query}"` : 'Поиск'}
-            {total > 0 && <span className="text-gray-400 text-sm ml-2">({total} найдено)</span>}
+          <h1 className="text-dgi-text text-xl font-bold mb-4 font-heading">
+            {query ? `Результаты поиска: «${query}»` : 'Поиск'}
+            {total > 0 && <span className="text-dgi-muted text-sm font-normal ml-2">({total} найдено)</span>}
           </h1>
 
           {isLoading ? (
@@ -84,7 +84,7 @@ export default function SearchPage() {
             </div>
           ) : videos.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-gray-400 text-lg">
+              <p className="text-dgi-muted text-lg">
                 {query ? 'Ничего не найдено' : 'Введите запрос для поиска'}
               </p>
             </div>

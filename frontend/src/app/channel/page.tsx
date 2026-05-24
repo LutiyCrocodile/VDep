@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect } from 'react';
 import Header from '@/components/layout/Header';
@@ -51,7 +51,7 @@ export default function ChannelPage() {
       <div className="min-h-screen dgi-gradient-bg">
         <Header />
         <main className={`pt-14 min-h-screen flex items-center justify-center transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
-          <p className="text-white">Войдите для просмотра канала</p>
+          <p className="text-dgi-text">Войдите для просмотра канала</p>
         </main>
       </div>
     );
@@ -79,8 +79,8 @@ export default function ChannelPage() {
         <main className={`pt-14 min-h-screen transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
           <div className="max-w-4xl mx-auto p-6">
             <div className="bg-dgi-surface/80 backdrop-blur-sm rounded-2xl p-8 border border-dgi-primary/30 text-center">
-              <h1 className="text-2xl font-bold text-white mb-4">У вас нет канала</h1>
-              <p className="text-gray-400 mb-6">Создайте канал, чтобы загружать видео</p>
+              <h1 className="dgi-page-heading mb-4">У вас нет канала</h1>
+              <p className="text-dgi-muted mb-6">Создайте канал, чтобы загружать видео</p>
               <a
                 href="/create-channel"
                 className="bg-gradient-to-r from-dgi-primary to-dgi-primary-mid hover:from-dgi-primary-mid hover:to-dgi-primary-dark text-white px-6 py-3 rounded-lg font-medium transition-all"
@@ -106,21 +106,21 @@ export default function ChannelPage() {
                 {channel.name[0]?.toUpperCase() || 'C'}
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-white">{channel.name}</h1>
-                <p className="text-gray-400">@{channel.handle}</p>
-                <p className="text-gray-400 text-sm mt-1">
+                <h1 className="dgi-page-heading">{channel.name}</h1>
+                <p className="text-dgi-muted">@{channel.handle}</p>
+                <p className="text-dgi-muted text-sm mt-1">
                   {channel.subscribers_count?.toLocaleString() || 0} подписчиков
                 </p>
               </div>
             </div>
             {channel.description && (
-              <p className="text-gray-300 mt-4">{channel.description}</p>
+              <p className="text-dgi-muted mt-4">{channel.description}</p>
             )}
           </div>
 
-          <h2 className="text-xl font-bold text-white mb-4">Видео канала</h2>
+          <h2 className="text-xl font-bold text-dgi-text mb-4 font-heading">Видео канала</h2>
           {videos.length === 0 ? (
-            <p className="text-gray-400">Нет видео</p>
+            <p className="text-dgi-muted">Нет видео</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {videos.map((video) => (

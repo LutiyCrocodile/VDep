@@ -28,7 +28,7 @@ VALUES
   (
     gen_random_uuid(),
     'dev_viewer',
-    'dev.viewer@dgi.local',
+    'moren280806@yandex.ru',
     '$2b$12$ef3qJ1ml214zOLcjKEhYJ.H84nDLuNxDTwPUQ6rwvd4JfU.nmRZya',
     true,
     true,

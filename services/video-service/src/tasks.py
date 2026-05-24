@@ -10,6 +10,7 @@ from minio.error import S3Error
 from urllib.parse import urlparse
 import logging
 import pg8000
+import httpx
 from .celery_app import celery_app
 from .config import settings
 
@@ -66,6 +67,50 @@ def update_video_status(video_id, status, hls_url=None):
         conn.commit()
     finally:
         conn.close()
+
+def _notify_channel_new_video(video_id: str):
+    """Уведомить подписчиков канала о новом готовом видео."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT v.title, v.channel_id, v.user_id, c.name, c.handle
+            FROM videos v
+            LEFT JOIN channels c ON c.id = v.channel_id
+            WHERE v.id = %s
+            """,
+            (video_id,),
+        )
+        row = cursor.fetchone()
+        if not row or not row[1]:
+            return
+        title, channel_id, owner_id, channel_name, channel_handle = row
+        payload = {
+            "event_type": "new_video",
+            "channel_id": str(channel_id),
+            "owner_id": str(owner_id),
+            "channel_name": channel_name or "",
+            "channel_handle": channel_handle,
+            "title": title or "Новое видео",
+            "entity_id": video_id,
+            "link_path": f"/watch?v={video_id}",
+        }
+        with httpx.Client(timeout=20.0) as client:
+            r = client.post(
+                f"{settings.notification_service_url}/internal/events/channel",
+                json=payload,
+                headers={"Authorization": f"Bearer {settings.internal_auth_token}"},
+            )
+            if r.status_code != 200:
+                logger.warning("new_video notify failed: %s %s", r.status_code, r.text)
+            else:
+                logger.info("new_video notify: %s", r.json())
+    except Exception as e:
+        logger.warning("new_video notify error: %s", e)
+    finally:
+        conn.close()
+
 
 def update_video_progress(video_id, progress):
     """Update video transcoding progress"""
@@ -200,6 +245,7 @@ def transcode_video(self, video_id: str, minio_key: str):
 
             # Update database
             update_video_status(video_id, 'ready', hls_url)
+            _notify_channel_new_video(video_id)
 
             logger.info(f"Transcoding completed for video {video_id}")
 

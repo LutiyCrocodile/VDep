@@ -222,6 +222,16 @@ class Subscription(Base):
         return [Channel(**row._asdict()) for row in rows]
 
     @classmethod
+    async def get_channel_subscriber_ids(cls, db: AsyncSession, channel_id: str) -> list:
+        result = await db.execute(
+            text(
+                "SELECT subscriber_id::text FROM subscriptions WHERE channel_id = CAST(:channel_id AS uuid)"
+            ),
+            {"channel_id": channel_id},
+        )
+        return [str(row[0]) for row in result.fetchall()]
+
+    @classmethod
     async def get_channel_subscribers(cls, db: AsyncSession, channel_id: str, skip: int = 0, limit: int = 10):
         query = """
             SELECT u.* FROM users u

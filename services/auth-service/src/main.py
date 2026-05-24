@@ -633,6 +633,26 @@ async def internal_user_profile_mini(
     return {"id": str(user.id), "username": user.username}
 
 
+@app.get("/internal/users/{user_id}/contact")
+async def internal_user_contact(
+    user_id: str,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db),
+):
+    """Email и username для рассылки уведомлений подписчикам."""
+    if credentials.credentials != settings.internal_auth_token:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    user = await User.get_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {
+        "id": str(user.id),
+        "username": user.username,
+        "email": user.email,
+        "full_name": user.full_name,
+    }
+
+
 @app.get("/internal/users/{user_id}/permissions")
 async def get_user_permissions_internal(
     user_id: str,

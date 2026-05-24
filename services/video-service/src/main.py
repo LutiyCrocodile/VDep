@@ -232,6 +232,20 @@ async def internal_get_channel_by_owner(
     )
 
 
+@app.get("/internal/channels/{channel_id}/subscriber-ids")
+async def internal_channel_subscriber_ids(
+    channel_id: str,
+    _ok: bool = Depends(require_internal_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Список user_id подписчиков канала (для notification-service)."""
+    channel = await Channel.get_by_id(db, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    ids = await Subscription.get_channel_subscriber_ids(db, channel_id)
+    return {"channel_id": channel_id, "subscriber_ids": ids}
+
+
 @app.get("/internal/videos/{video_id}/status")
 async def internal_video_processing_status(
     video_id: str,

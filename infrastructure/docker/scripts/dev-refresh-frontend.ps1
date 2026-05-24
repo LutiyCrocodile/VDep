@@ -1,6 +1,6 @@
 # Сброс кэша Next.js в Docker (когда UI не обновляется после правок в frontend/src).
 $ErrorActionPreference = "Stop"
-$DockerDir = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) "infrastructure\docker"
+$DockerDir = Split-Path $PSScriptRoot -Parent
 Set-Location $DockerDir
 
 docker compose stop frontend

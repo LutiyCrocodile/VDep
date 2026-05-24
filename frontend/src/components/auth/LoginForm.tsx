@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/services/auth';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function LoginForm() {
   const [username, setUsername] = useState('');
@@ -36,11 +37,7 @@ export default function LoginForm() {
       <div className="bg-dgi-surface rounded-2xl p-8 shadow-lg w-full max-w-md border border-dgi-border">
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-dgi-primary to-dgi-primary-mid rounded-xl flex items-center justify-center">
-              <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" />
-              </svg>
-            </div>
+            <Image src="/icon.ico" alt="" width={48} height={48} className="rounded-xl shadow-md" priority />
             <div className="text-left">
               <span className="text-xl font-bold text-dgi-text font-heading">Видеохостинг ДГИ</span>
               <p className="text-xs text-dgi-muted">Корпоративная платформа</p>

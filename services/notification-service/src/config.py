@@ -12,13 +12,17 @@ class Settings(BaseSettings):
 
     # SMTP settings
     smtp_server: str = os.getenv("SMTP_SERVER", "smtp.dgi.mos.ru")
-    smtp_port: int = int(os.getenv("SMTP_PORT", "587"))
+    smtp_port: int = int(os.getenv("SMTP_PORT", "465"))
+    smtp_use_ssl: bool = os.getenv("SMTP_USE_SSL", "true").lower() in ("1", "true", "yes")
     smtp_username: str = os.getenv("SMTP_USERNAME", "")
     smtp_password: str = os.getenv("SMTP_PASSWORD", "")
     smtp_from_email: str = os.getenv("SMTP_FROM_EMAIL", "notifications@video.dgi.mos.ru")
 
-    # Auth service
+    # Auth / video services
     auth_service_url: str = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8000")
+    video_service_url: str = os.getenv("VIDEO_SERVICE_URL", "http://video-service:8001")
+    internal_auth_token: str = os.getenv("INTERNAL_AUTH_TOKEN", "internal-secret-token")
+    frontend_public_url: str = os.getenv("FRONTEND_PUBLIC_URL", "http://localhost:3000").rstrip("/")
 
     # WebSocket settings
     websocket_heartbeat: int = int(os.getenv("WEBSOCKET_HEARTBEAT", "30"))

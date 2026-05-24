@@ -597,7 +597,7 @@ export default function WatchPage() {
               )}
 
               {/* Controls overlay - с анимацией скрытия вниз */}
-              <div className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-dgi-bg via-dgi-bg/80 to-transparent p-6 z-30 transition-transform duration-300 ease-out ${mouseActive || !isPlaying ? 'translate-y-0' : 'translate-y-full'}`}>
+              <div className={`absolute bottom-0 left-0 right-0 p-6 z-30 transition-transform duration-300 ease-out ${mouseActive || !isPlaying ? 'translate-y-0' : 'translate-y-full'}`}>
                 {/* Progress bar - неактивна пока грузится */}
                 <div 
                   ref={progressRef}
@@ -640,7 +640,7 @@ export default function WatchPage() {
                     <div className="relative">
                       <button 
                         onClick={() => setShowQualityMenu(!showQualityMenu)}
-                        className="px-3 py-1 bg-dgi-surface/80 hover:bg-dgi-surface-hover text-white text-sm rounded-lg transition-colors border border-dgi-border"
+                        className="px-3 py-1 bg-black/60 hover:bg-black/70 text-white text-sm rounded-lg transition-colors border border-white/20"
                       >
                         {currentQuality === 'auto' ? 'Авто' : currentQuality}
                       </button>

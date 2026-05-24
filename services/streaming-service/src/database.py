@@ -311,6 +311,112 @@ async def list_stream_viewer_ids(db: AsyncSession, stream_id: str) -> List[str]:
     return [str(row[0]) for row in result.fetchall()]
 
 
+async def get_channel_for_owner(db: AsyncSession, owner_id: str) -> tuple[Optional[str], Optional[str]]:
+    """Returns (channel_id, channel_handle) for stream owner."""
+    result = await db.execute(
+        text(
+            "SELECT id::text, handle FROM channels WHERE owner_id = CAST(:oid AS uuid) LIMIT 1"
+        ),
+        {"oid": owner_id},
+    )
+    row = result.first()
+    if not row:
+        return None, None
+    return str(row[0]), str(row[1]) if row[1] else None
+
+
+async def get_stream_likes_count(db: AsyncSession, stream_id: str) -> int:
+    result = await db.execute(
+        text("SELECT COUNT(*) FROM stream_likes WHERE stream_id = CAST(:sid AS uuid)"),
+        {"sid": stream_id},
+    )
+    return int(result.scalar() or 0)
+
+
+async def user_liked_stream(db: AsyncSession, stream_id: str, user_id: str) -> bool:
+    result = await db.execute(
+        text(
+            """
+            SELECT 1 FROM stream_likes
+            WHERE stream_id = CAST(:sid AS uuid) AND user_id = CAST(:uid AS uuid)
+            LIMIT 1
+            """
+        ),
+        {"sid": stream_id, "uid": user_id},
+    )
+    return result.first() is not None
+
+
+async def add_stream_like(db: AsyncSession, stream_id: str, user_id: str) -> bool:
+    if await user_liked_stream(db, stream_id, user_id):
+        return False
+    await db.execute(
+        text(
+            """
+            INSERT INTO stream_likes (id, stream_id, user_id, created_at)
+            VALUES (gen_random_uuid(), CAST(:sid AS uuid), CAST(:uid AS uuid), NOW())
+            """
+        ),
+        {"sid": stream_id, "uid": user_id},
+    )
+    await db.commit()
+    return True
+
+
+async def remove_stream_like(db: AsyncSession, stream_id: str, user_id: str) -> bool:
+    result = await db.execute(
+        text(
+            """
+            DELETE FROM stream_likes
+            WHERE stream_id = CAST(:sid AS uuid) AND user_id = CAST(:uid AS uuid)
+            """
+        ),
+        {"sid": stream_id, "uid": user_id},
+    )
+    await db.commit()
+    return result.rowcount > 0
+
+
+async def get_video_likes_count(db: AsyncSession, video_id: str) -> int:
+    result = await db.execute(
+        text("SELECT COUNT(*) FROM video_likes WHERE video_id = CAST(:vid AS uuid)"),
+        {"vid": video_id},
+    )
+    return int(result.scalar() or 0)
+
+
+async def user_liked_video(db: AsyncSession, video_id: str, user_id: str) -> bool:
+    result = await db.execute(
+        text(
+            """
+            SELECT 1 FROM video_likes
+            WHERE video_id = CAST(:vid AS uuid) AND user_id = CAST(:uid AS uuid)
+            LIMIT 1
+            """
+        ),
+        {"vid": video_id, "uid": user_id},
+    )
+    return result.first() is not None
+
+
+async def transfer_stream_likes_to_video(db: AsyncSession, stream_id: str, video_id: str) -> int:
+    """Копирует лайки эфира в video_likes (без дубликатов). Возвращает число перенесённых."""
+    result = await db.execute(
+        text(
+            """
+            INSERT INTO video_likes (id, video_id, user_id, created_at)
+            SELECT gen_random_uuid(), CAST(:vid AS uuid), sl.user_id, sl.created_at
+            FROM stream_likes sl
+            WHERE sl.stream_id = CAST(:sid AS uuid)
+            ON CONFLICT ON CONSTRAINT uq_video_likes_video_user DO NOTHING
+            """
+        ),
+        {"sid": stream_id, "vid": video_id},
+    )
+    await db.commit()
+    return result.rowcount or 0
+
+
 engine = create_async_engine(settings.database_url, echo=False, future=True)
 
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
@@ -352,5 +458,18 @@ async def create_tables():
         await conn.execute(
             text(
                 "ALTER TABLE streams ADD COLUMN IF NOT EXISTS save_recording BOOLEAN NOT NULL DEFAULT true"
+            )
+        )
+        await conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS stream_likes (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    stream_id UUID NOT NULL REFERENCES streams(id) ON DELETE CASCADE,
+                    user_id UUID NOT NULL,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    CONSTRAINT uq_stream_likes_stream_user UNIQUE (stream_id, user_id)
+                )
+                """
             )
         )

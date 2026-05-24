@@ -15,6 +15,7 @@ from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, W
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 import uvicorn
 
@@ -22,13 +23,22 @@ from .auth_client import auth_client
 from .config import settings
 from .database import (
     Stream,
+    add_stream_like,
     async_session,
     create_tables,
+    get_channel_for_owner,
     get_db,
+    get_stream_likes_count,
+    get_video_likes_count,
     is_stream_viewer,
     list_stream_viewer_ids,
+    remove_stream_like,
     replace_stream_viewers,
+    transfer_stream_likes_to_video,
+    user_liked_stream,
+    user_liked_video,
 )
+from .presence import count_viewers, leave_presence, touch_presence
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -181,6 +191,15 @@ class StreamResponse(BaseModel):
     created_at: Optional[datetime] = None
 
 
+class StreamDetailResponse(StreamResponse):
+    likes_count: int = 0
+    user_liked: bool = False
+    viewers_count: int = 0
+    channel_id: Optional[str] = None
+    channel_handle: Optional[str] = None
+    archived_video_id: Optional[str] = None
+
+
 def _mediamtx_path(rtmp_key: str) -> str:
     return f"{settings.rtmp_app}/{rtmp_key}"
 
@@ -219,6 +238,57 @@ def _stream_saves_recording(stream: Stream) -> bool:
     if val is None:
         return True
     return bool(val)
+
+
+async def _stream_likes_state(
+    db: AsyncSession, stream: Stream, viewer_id: Optional[str]
+) -> tuple[int, bool]:
+    if stream.archived_video_id:
+        vid = str(stream.archived_video_id)
+        count = await get_video_likes_count(db, vid)
+        liked = await user_liked_video(db, vid, viewer_id) if viewer_id else False
+        return count, liked
+    sid = str(stream.id)
+    count = await get_stream_likes_count(db, sid)
+    liked = await user_liked_stream(db, sid, viewer_id) if viewer_id else False
+    return count, liked
+
+
+async def _build_stream_detail(
+    db: AsyncSession,
+    stream: Stream,
+    profile: Optional[dict],
+) -> StreamDetailResponse:
+    viewer_id = str(profile["id"]) if profile else None
+    likes_count, user_liked = await _stream_likes_state(db, stream, viewer_id)
+    names = await _resolve_owner_usernames({str(stream.user_id)})
+    base = to_stream_response(stream)
+    channel_id, channel_handle = await get_channel_for_owner(db, str(stream.user_id))
+    detail = base.model_dump()
+    detail.update(
+        {
+            "owner_username": names.get(str(stream.user_id)),
+            "created_at": stream.created_at,
+            "likes_count": likes_count,
+            "user_liked": user_liked,
+            "viewers_count": count_viewers(str(stream.id)),
+            "channel_id": channel_id,
+            "channel_handle": channel_handle,
+            "archived_video_id": str(stream.archived_video_id) if stream.archived_video_id else None,
+        }
+    )
+    return StreamDetailResponse(**detail)
+
+
+async def _require_stream_view_access(
+    db: AsyncSession, stream_id: str, profile: Optional[dict]
+) -> Stream:
+    stream = await Stream.get_by_id(db, stream_id)
+    if not stream:
+        raise HTTPException(status_code=404, detail="Трансляция не найдена")
+    if not await _can_view_stream_db(db, stream, profile):
+        raise HTTPException(status_code=403, detail="Нет доступа к трансляции")
+    return stream
 
 
 def _rtmp_key_from_mediamtx_path(path: str) -> str:
@@ -649,6 +719,32 @@ async def _reconcile_stream_rtmp_state(
     return refreshed or stream
 
 
+async def _notify_stream_live(stream: Stream, channel_id: str, channel_name: str, channel_handle: Optional[str]):
+    payload = {
+        "event_type": "stream_live",
+        "channel_id": channel_id,
+        "owner_id": str(stream.user_id),
+        "channel_name": channel_name or "",
+        "channel_handle": channel_handle,
+        "title": stream.title or "Трансляция",
+        "entity_id": str(stream.id),
+        "link_path": f"/stream/{stream.id}",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            r = await client.post(
+                f"{settings.notification_service_url}/internal/events/channel",
+                json=payload,
+                headers={"Authorization": f"Bearer {settings.internal_auth_token}"},
+            )
+            if r.status_code != 200:
+                logger.warning("stream_live notify failed: %s %s", r.status_code, r.text)
+            else:
+                logger.info("stream_live notify: %s", r.json())
+    except httpx.RequestError as e:
+        logger.warning("stream_live notify error: %s", e)
+
+
 async def _mark_stream_live_on_rtmp_publish(db: AsyncSession, rtmp_key: str) -> Optional[Stream]:
     """Разрешить RTMP и отметить эфир как активный (OBS подключился)."""
     stream = await Stream.get_by_rtmp_key(db, rtmp_key)
@@ -662,6 +758,7 @@ async def _mark_stream_live_on_rtmp_publish(db: AsyncSession, rtmp_key: str) -> 
     if st in ("uploading", "completed"):
         return None
 
+    was_already_live = bool(stream.is_live)
     now = datetime.utcnow()
     await Stream.update_status(
         db,
@@ -669,7 +766,24 @@ async def _mark_stream_live_on_rtmp_publish(db: AsyncSession, rtmp_key: str) -> 
         is_live=True,
         start_time=stream.start_time or now,
     )
-    return await Stream.get_by_id(db, str(stream.id))
+    refreshed = await Stream.get_by_id(db, str(stream.id))
+    if refreshed and not was_already_live:
+        channel_id, channel_handle = await get_channel_for_owner(db, str(refreshed.user_id))
+        if channel_id:
+            channel_name = ""
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    ch = await client.get(
+                        f"{settings.video_service_url}/internal/channels/by-owner/{refreshed.user_id}",
+                        headers={"Authorization": f"Bearer {settings.internal_auth_token}"},
+                    )
+                    if ch.status_code == 200:
+                        channel_name = ch.json().get("name") or ""
+                        channel_handle = ch.json().get("handle") or channel_handle
+            except httpx.RequestError:
+                pass
+            await _notify_stream_live(refreshed, channel_id, channel_name, channel_handle)
+    return refreshed
 
 
 async def _finalize_stream_on_rtmp_disconnect(
@@ -838,6 +952,14 @@ async def _archive_stream_task_impl(stream_id: str):
                     archived_video_id=vid,
                     archive_error=None,
                 )
+                async with async_session() as db:
+                    moved = await transfer_stream_likes_to_video(db, stream_id, vid)
+                    logger.info(
+                        "Stream %s archived as video %s; transferred %s likes",
+                        stream_id,
+                        vid,
+                        moved,
+                    )
                 logger.info("Stream %s archived as video %s", stream_id, vid)
             else:
                 await _set_archive_state(stream_id, "failed", archive_error="Видеохостинг не вернул id видео")
@@ -862,6 +984,8 @@ async def get_live_streams_public_filtered(
     for s in visible:
         r = to_stream_response(s)
         uid = str(s.user_id)
+        sid = str(s.id)
+        likes_count, _ = await _stream_likes_state(db, s, None)
         items.append(
             {
                 "id": r.id,
@@ -872,7 +996,8 @@ async def get_live_streams_public_filtered(
                 "user_id": r.user_id,
                 "owner_username": owner_names.get(uid),
                 "created_at": s.created_at.isoformat() if s.created_at else None,
-                "viewers_count": 0,
+                "viewers_count": count_viewers(sid),
+                "likes_count": likes_count,
                 "visibility": r.visibility,
             }
         )
@@ -1035,27 +1160,90 @@ async def list_streams(
     return [to_stream_response(s) for s in streams]
 
 
-@app.get("/streams/{stream_id}", response_model=StreamResponse)
+@app.get("/streams/{stream_id}", response_model=StreamDetailResponse)
 async def get_stream(
     stream_id: str,
     profile: Optional[dict] = Depends(get_optional_profile),
     db: AsyncSession = Depends(get_db),
 ):
-    stream = await Stream.get_by_id(db, stream_id)
-    if not stream:
-        raise HTTPException(status_code=404, detail="Трансляция не найдена")
-    if not await _can_view_stream_db(db, stream, profile):
-        raise HTTPException(status_code=403, detail="Нет доступа к трансляции")
+    stream = await _require_stream_view_access(db, stream_id, profile)
     if stream.end_time is None and (stream.is_live or stream.start_time):
         stream = await _reconcile_stream_rtmp_state(db, stream)
-    names = await _resolve_owner_usernames({str(stream.user_id)})
-    base = to_stream_response(stream)
-    return base.model_copy(
-        update={
-            "owner_username": names.get(str(stream.user_id)),
-            "created_at": stream.created_at,
-        }
-    )
+        stream = await Stream.get_by_id(db, stream_id) or stream
+    return await _build_stream_detail(db, stream, profile)
+
+
+@app.post("/streams/{stream_id}/presence")
+async def stream_presence_heartbeat(
+    stream_id: str,
+    profile: dict = Depends(get_current_user_with_permissions),
+    db: AsyncSession = Depends(get_db),
+):
+    stream = await _require_stream_view_access(db, stream_id, profile)
+    touch_presence(str(stream.id), str(profile["id"]))
+    return {"viewers_count": count_viewers(str(stream.id))}
+
+
+@app.post("/streams/{stream_id}/presence/leave")
+async def stream_presence_leave(
+    stream_id: str,
+    profile: dict = Depends(get_current_user_with_permissions),
+    db: AsyncSession = Depends(get_db),
+):
+    stream = await _require_stream_view_access(db, stream_id, profile)
+    leave_presence(str(stream.id), str(profile["id"]))
+    return {"viewers_count": count_viewers(str(stream.id))}
+
+
+@app.post("/streams/{stream_id}/like")
+async def like_stream(
+    stream_id: str,
+    profile: dict = Depends(get_current_user_with_permissions),
+    db: AsyncSession = Depends(get_db),
+):
+    stream = await _require_stream_view_access(db, stream_id, profile)
+    user_id = str(profile["id"])
+    if stream.archived_video_id:
+        vid = str(stream.archived_video_id)
+        if not await user_liked_video(db, vid, user_id):
+            await db.execute(
+                text(
+                    """
+                    INSERT INTO video_likes (id, video_id, user_id, created_at)
+                    VALUES (gen_random_uuid(), CAST(:vid AS uuid), CAST(:uid AS uuid), NOW())
+                    ON CONFLICT ON CONSTRAINT uq_video_likes_video_user DO NOTHING
+                    """
+                ),
+                {"vid": vid, "uid": user_id},
+            )
+            await db.commit()
+    else:
+        await add_stream_like(db, stream_id, user_id)
+    likes_count, user_liked = await _stream_likes_state(db, stream, user_id)
+    return {"likes_count": likes_count, "user_liked": user_liked}
+
+
+@app.delete("/streams/{stream_id}/like")
+async def unlike_stream(
+    stream_id: str,
+    profile: dict = Depends(get_current_user_with_permissions),
+    db: AsyncSession = Depends(get_db),
+):
+    stream = await _require_stream_view_access(db, stream_id, profile)
+    user_id = str(profile["id"])
+    if stream.archived_video_id:
+        vid = str(stream.archived_video_id)
+        await db.execute(
+            text(
+                "DELETE FROM video_likes WHERE video_id = CAST(:vid AS uuid) AND user_id = CAST(:uid AS uuid)"
+            ),
+            {"vid": vid, "uid": user_id},
+        )
+        await db.commit()
+    else:
+        await remove_stream_like(db, stream_id, user_id)
+    likes_count, user_liked = await _stream_likes_state(db, stream, user_id)
+    return {"likes_count": likes_count, "user_liked": user_liked}
 
 
 @app.put("/streams/{stream_id}/start")
