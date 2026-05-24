@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import Header from '@/components/layout/Header';
@@ -32,7 +32,7 @@ export default function HistoryPage() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] to-[#1a1a3e]">
+      <div className="min-h-screen dgi-gradient-bg">
         <Header />
         <main className={`pt-14 min-h-screen flex items-center justify-center transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
           <p className="text-white">Войдите для просмотра истории</p>
@@ -42,7 +42,7 @@ export default function HistoryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] to-[#1a1a3e]">
+    <div className="min-h-screen dgi-gradient-bg">
       <Header />
       <Sidebar />
       <main className={`pt-14 min-h-screen transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
@@ -50,7 +50,7 @@ export default function HistoryPage() {
           <h1 className="text-3xl font-bold text-white mb-6">История просмотров</h1>
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <div className="w-8 h-8 border-2 border-[#4f46e5] border-t-transparent rounded-full animate-spin" />
+              <div className="w-8 h-8 border-2 border-dgi-primary border-t-transparent rounded-full animate-spin" />
             </div>
           ) : videos.length === 0 ? (
             <p className="text-gray-400">История пуста</p>

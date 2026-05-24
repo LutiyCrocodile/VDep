@@ -4,7 +4,6 @@ import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Building2, LogIn, Eye, EyeOff, Shield } from 'lucide-react'
 
-// Extend Window interface for runtime env
 declare global {
   interface Window {
     ENV?: {
@@ -54,14 +53,12 @@ export default function LoginPage() {
       localStorage.setItem('access_token', data.access_token)
       localStorage.setItem('refresh_token', data.refresh_token)
 
-      // Fetch user info
       const meRes = await fetch(`${authUrl}/users/me`, {
         headers: { Authorization: `Bearer ${data.access_token}` },
       })
       if (meRes.ok) {
         const userData = await meRes.json()
         if (userData.is_employee) {
-          // Redirect to portal main page
           router.push('/')
         } else {
           setLoginError('Доступ разрешен только сотрудникам ДГИ')
@@ -69,49 +66,46 @@ export default function LoginPage() {
           localStorage.removeItem('refresh_token')
         }
       }
-    } catch (err: any) {
-      setLoginError(err.message || 'Не удалось войти')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Не удалось войти'
+      setLoginError(message)
     } finally {
       setLoginLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-red-50/50 via-white to-[var(--dgi-bg)] flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Logo and Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-600 to-blue-700 rounded-3xl mb-6 shadow-2xl">
+          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-dgi-primary to-dgi-primary-dark rounded-3xl mb-6 shadow-xl">
             <Building2 className="w-10 h-10 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">ДГИ Москва</h1>
-          <h2 className="text-xl text-gray-600 mb-1">Портал доступа к сервисам</h2>
-          <p className="text-gray-500 text-sm">Единая система авторизации для сотрудников</p>
+          <h1 className="text-3xl font-bold text-dgi-text mb-2 font-heading">ДГИ Москва</h1>
+          <h2 className="text-xl text-dgi-muted mb-1">Портал доступа к сервисам</h2>
+          <p className="text-dgi-muted text-sm">Единая система авторизации для сотрудников</p>
         </div>
 
-        {/* Login Form */}
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
+        <div className="bg-dgi-surface rounded-2xl shadow-xl border border-dgi-border p-8">
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
-              <label htmlFor="username" className="block text-sm font-semibold text-gray-700 mb-2">
+              <label htmlFor="username" className="block text-sm font-semibold text-dgi-text mb-2">
                 Логин
               </label>
-              <div className="relative">
-                <input
-                  id="username"
-                  type="text"
-                  value={loginData.username}
-                  onChange={(e) => setLoginData({ ...loginData, username: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-900 placeholder-gray-400"
-                  placeholder="Введите корпоративный логин"
-                  required
-                  autoFocus
-                />
-              </div>
+              <input
+                id="username"
+                type="text"
+                value={loginData.username}
+                onChange={(e) => setLoginData({ ...loginData, username: e.target.value })}
+                className="w-full px-4 py-3 border border-dgi-border rounded-lg focus:ring-2 focus:ring-dgi-primary/30 focus:border-dgi-primary outline-none transition-all text-dgi-text placeholder-gray-400"
+                placeholder="Введите корпоративный логин"
+                required
+                autoFocus
+              />
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
+              <label htmlFor="password" className="block text-sm font-semibold text-dgi-text mb-2">
                 Пароль
               </label>
               <div className="relative">
@@ -120,14 +114,14 @@ export default function LoginPage() {
                   type={showPassword ? 'text' : 'password'}
                   value={loginData.password}
                   onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
-                  className="w-full px-4 py-3 pr-12 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-900 placeholder-gray-400"
+                  className="w-full px-4 py-3 pr-12 border border-dgi-border rounded-lg focus:ring-2 focus:ring-dgi-primary/30 focus:border-dgi-primary outline-none transition-all text-dgi-text placeholder-gray-400"
                   placeholder="Введите пароль"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-dgi-muted hover:text-dgi-text transition-colors"
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -143,7 +137,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loginLoading}
-              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 shadow-lg hover:shadow-blue-500/25 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+              className="dgi-btn-primary w-full font-semibold py-3 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-3"
             >
               {loginLoading ? (
                 <>
@@ -159,22 +153,20 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Security Notice */}
-          <div className="mt-6 pt-6 border-t border-gray-100">
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              <Shield className="w-4 h-4 text-green-500" />
+          <div className="mt-6 pt-6 border-t border-dgi-border">
+            <div className="flex items-center gap-2 text-sm text-dgi-muted">
+              <Shield className="w-4 h-4 text-dgi-primary" />
               <span>Защищенная корпоративная система</span>
             </div>
           </div>
         </div>
 
-        {/* Footer */}
         <div className="text-center mt-8">
-          <p className="text-gray-400 text-sm">
+          <p className="text-dgi-muted text-sm">
             Департамент городского имущества Москвы
           </p>
-          <p className="text-gray-400 text-xs mt-1">
-            2024 Все права защищены
+          <p className="text-dgi-muted text-xs mt-1">
+            © 2026 Все права защищены
           </p>
         </div>
       </div>

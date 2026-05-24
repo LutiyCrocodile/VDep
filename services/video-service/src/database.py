@@ -7,6 +7,9 @@ import logging
 from datetime import datetime
 from .config import settings
 
+logger = logging.getLogger(__name__)
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -489,6 +492,9 @@ class VideoView(Base):
 
 class VideoUserAccess(Base):
     __tablename__ = "video_user_access"
+    __table_args__ = (
+        UniqueConstraint("video_id", "user_id", name="uq_video_user_access_video_user"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     video_id = Column(UUID(as_uuid=True), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False)
@@ -499,20 +505,21 @@ class VideoUserAccess(Base):
     @classmethod
     async def grant_access(cls, db: AsyncSession, video_id: str, user_id: str, granted_by: str):
         """Grant access to a specific user for a video"""
+        if await cls.check_access(db, video_id, user_id):
+            return True
         try:
             await db.execute(
                 text("""
                     INSERT INTO video_user_access (id, video_id, user_id, granted_at, granted_by)
-                    VALUES (gen_random_uuid(), :video_id, :user_id, NOW(), :granted_by)
-                    ON CONFLICT (video_id, user_id) DO NOTHING
+                    VALUES (gen_random_uuid(), CAST(:video_id AS uuid), CAST(:user_id AS uuid), NOW(), CAST(:granted_by AS uuid))
                 """),
-                {"video_id": video_id, "user_id": user_id, "granted_by": granted_by}
+                {"video_id": video_id, "user_id": user_id, "granted_by": granted_by},
             )
             await db.commit()
             return True
         except Exception as e:
             await db.rollback()
-            logger.error(f"Failed to grant access: {e}")
+            logger.error("Failed to grant access: %s", e)
             return False
 
     @classmethod

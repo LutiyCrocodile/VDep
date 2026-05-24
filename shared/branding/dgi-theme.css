@@ -1,0 +1,44 @@
+/**
+ * Брендбук ГКМ 2025 — дизайн-токены ДГИ
+ * Основной цвет: RGB 200, 20, 30 (#c8141e)
+ * Шрифты: Century Gothic (заголовки), Arial (интерфейс)
+ */
+
+:root {
+  --dgi-primary: #c8141e;
+  --dgi-primary-rgb: 200 20 30;
+  --dgi-primary-mid-rgb: 170 20 30;
+  --dgi-primary-dark-rgb: 140 20 30;
+  --dgi-primary-mid: #aa141e;
+  --dgi-primary-dark: #8c141e;
+  --dgi-black: #141414;
+  --dgi-gray-90: #1e1e1e;
+  --dgi-gray-80: #282828;
+  --dgi-gray-70: #3a3a3a;
+  --dgi-gray-40: #9ca3af;
+  --dgi-gray-20: #e5e7eb;
+  --dgi-white: #ffffff;
+  --dgi-bg: #141414;
+  --dgi-surface: #1e1e1e;
+  --dgi-surface-hover: #282828;
+  --dgi-border: #3a3a3a;
+  --dgi-text: #f3f4f6;
+  --dgi-text-muted: #9ca3af;
+  --dgi-font-heading: 'Century Gothic', 'CenturyGothic', 'Apple Gothic', 'Trebuchet MS', sans-serif;
+  --dgi-font-body: Arial, Helvetica, 'Segoe UI', sans-serif;
+  --dgi-radius: 0.5rem;
+  --dgi-radius-lg: 0.75rem;
+  --dgi-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  --dgi-shadow-primary: 0 4px 14px rgba(200, 20, 30, 0.25);
+}
+
+.dgi-theme-light {
+  --dgi-bg: #f8f9fa;
+  --dgi-surface: #ffffff;
+  --dgi-surface-hover: #f1f3f5;
+  --dgi-border: #dee2e6;
+  --dgi-text: #141414;
+  --dgi-text-muted: #6c757d;
+  --dgi-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+  --dgi-shadow-primary: 0 4px 14px rgba(200, 20, 30, 0.15);
+}

@@ -100,7 +100,7 @@ export default function VideoCard({ video }: VideoCardProps) {
     const badges = {
       restricted: { text: 'Личное', color: 'bg-red-600/70' },
       confidential: { text: 'Конфиденциальное', color: 'bg-yellow-600/70' },
-      internal: { text: 'Внутреннее', color: 'bg-blue-600/70' },
+      internal: { text: 'Внутреннее', color: 'bg-dgi-primary/70' },
     };
 
     const badge = badges[video.classification as keyof typeof badges];
@@ -134,7 +134,7 @@ export default function VideoCard({ video }: VideoCardProps) {
 
   return (
     <Link href={`/watch?v=${video.id}`} className="group block">
-      <div className="relative aspect-video rounded-xl overflow-hidden bg-[#1a1a3e] border border-[#27274a] group-hover:border-indigo-500/30 transition-all duration-300">
+      <div className="relative aspect-video rounded-xl overflow-hidden bg-dgi-surface border border-dgi-border group-hover:border-dgi-primary/30 transition-all duration-300">
         {getClassificationBadge()}
         <img
           src={thumbnailUrl}
@@ -143,12 +143,12 @@ export default function VideoCard({ video }: VideoCardProps) {
           onError={() => setImageError(true)}
         />
         {video.duration && (
-          <div className="absolute bottom-2 right-2 bg-[#0a0a1a]/90 text-white text-xs px-2 py-1 rounded-lg font-medium">
+          <div className="absolute bottom-2 right-2 bg-black/75 text-white text-xs px-2 py-1 rounded-lg font-medium">
             {formatDuration(video.duration)}
           </div>
         )}
         {(localStatus === 'uploaded' || localStatus === 'uploading') && (
-          <div className="absolute inset-0 bg-[#0a0a1a]/80 flex items-center justify-center backdrop-blur-sm">
+          <div className="absolute inset-0 bg-dgi-bg/80 flex items-center justify-center backdrop-blur-sm">
             <div className="flex items-center gap-2">
               <div className="w-5 h-5 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
               <span className="text-white text-sm font-medium">Ожидание обработки...</span>
@@ -156,41 +156,41 @@ export default function VideoCard({ video }: VideoCardProps) {
           </div>
         )}
         {localStatus === 'transcoding' && (
-          <div className="absolute inset-0 bg-[#0a0a1a]/90 flex flex-col items-center justify-center backdrop-blur-sm px-4">
+          <div className="absolute inset-0 bg-dgi-bg/90 flex flex-col items-center justify-center backdrop-blur-sm px-4">
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-dgi-primary border-t-transparent rounded-full animate-spin" />
               <span className="text-white text-sm font-medium">Обработка...</span>
             </div>
-            <div className="w-full max-w-[120px] h-2 bg-zinc-700 rounded-full overflow-hidden">
+            <div className="w-full max-w-[120px] h-2 bg-gray-300 rounded-full overflow-hidden">
               <div 
-                className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-300"
+                className="h-full bg-gradient-to-r from-dgi-primary to-dgi-primary-mid transition-all duration-300"
                 style={{ width: `${localProgress}%` }}
               />
             </div>
-            <span className="text-zinc-400 text-xs mt-1">{localProgress}%</span>
+            <span className="text-dgi-muted text-xs mt-1">{localProgress}%</span>
           </div>
         )}
       </div>
       <div className="mt-3 flex gap-3">
         <Link
           href={video.channel_handle ? `/channel/${video.channel_handle}` : (video.owner_username ? `/channel/${video.owner_username}` : '#')}
-          className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-medium text-sm flex-shrink-0 shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/40 transition-all"
+          className="w-9 h-9 rounded-full bg-gradient-to-br from-dgi-primary to-dgi-primary-mid flex items-center justify-center text-white font-medium text-sm flex-shrink-0 shadow-lg shadow-[0_4px_14px_rgba(200,20,30,0.2)] hover:shadow-[0_4px_14px_rgba(200,20,30,0.35)] transition-all"
           onClick={(e) => e.stopPropagation()}
         >
           {video.owner_username?.[0]?.toUpperCase() || 'U'}
         </Link>
         <div className="flex-1 min-w-0">
-          <h3 className="text-white font-medium text-sm line-clamp-2 leading-tight group-hover:text-indigo-400 transition-colors duration-200">
+          <h3 className="text-dgi-text font-medium text-sm line-clamp-2 leading-tight group-hover:text-dgi-primary transition-colors duration-200">
             {video.title || 'Без названия'}
           </h3>
           <Link
             href={video.channel_handle ? `/channel/${video.channel_handle}` : (video.owner_username ? `/channel/${video.owner_username}` : '#')}
-            className="text-zinc-400 text-sm mt-1 hover:text-zinc-300 transition-colors duration-200 block"
+            className="text-dgi-muted text-sm mt-1 hover:text-dgi-primary transition-colors duration-200 block"
             onClick={(e) => e.stopPropagation()}
           >
             {video.owner_username || 'Неизвестный'}
           </Link>
-          <p className="text-zinc-500 text-xs mt-0.5">
+          <p className="text-dgi-muted text-xs mt-0.5">
             {formatViews(video.views_count)} просмотров • {formatDate(video.created_at)}
           </p>
         </div>

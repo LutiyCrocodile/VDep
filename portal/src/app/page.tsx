@@ -63,8 +63,8 @@ const getServices = (): Service[] => [
     description: 'Корпоративная платформа для хранения и просмотра видеоматериалов ДГИ',
     icon: <Video className="w-8 h-8" />,
     url: getVideoUrl(),
-    color: 'text-blue-600',
-    bgColor: 'bg-blue-50',
+    color: 'text-dgi-primary',
+    bgColor: 'bg-red-50',
     status: 'active',
     features: ['Загрузка видео', 'Трансляции', 'Категории', 'Поиск']
   },
@@ -261,50 +261,50 @@ export default function PortalPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-dgi-bg flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-dgi-primary"></div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-100">
+    <div className="min-h-screen bg-gradient-to-br from-[var(--dgi-bg)] via-white to-red-50/40">
       {/* Header */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50">
+      <header className="bg-white/90 backdrop-blur-md border-b border-dgi-border sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-800 rounded-lg flex items-center justify-center">
+              <div className="w-10 h-10 bg-gradient-to-br from-dgi-primary to-dgi-primary-dark rounded-lg flex items-center justify-center shadow-md">
                 <Building2 className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-slate-900">Портал ДГИ</h1>
-                <p className="text-xs text-slate-500">Единое информационное пространство</p>
+                <h1 className="text-xl font-bold text-dgi-text font-heading">Портал ДГИ</h1>
+                <p className="text-xs text-dgi-muted">Единое информационное пространство</p>
               </div>
             </div>
 
             {/* User section */}
             <div className="flex items-center space-x-4">
               {/* Time */}
-              <div className="hidden sm:block text-sm text-slate-600">
+              <div className="hidden sm:block text-sm text-dgi-muted">
                 {currentTime.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
-                <span className="mx-2 text-slate-300">|</span>
+                <span className="mx-2 text-dgi-border">|</span>
                 {currentTime.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
               </div>
 
               {user ? (
                 <div className="flex items-center space-x-3">
                   <div className="text-right hidden sm:block">
-                    <p className="text-sm font-medium text-slate-900">{user.full_name || user.username}</p>
-                    <p className="text-xs text-slate-500 uppercase tracking-wider">{user.role}</p>
+                    <p className="text-sm font-medium text-dgi-text">{user.full_name || user.username}</p>
+                    <p className="text-xs text-dgi-muted uppercase tracking-wider">{user.role}</p>
                   </div>
-                  <div className="w-10 h-10 bg-gradient-to-br from-slate-100 to-slate-200 rounded-full flex items-center justify-center">
-                    <User className="w-5 h-5 text-slate-600" />
+                  <div className="w-10 h-10 bg-gradient-to-br from-dgi-primary to-dgi-primary-mid rounded-full flex items-center justify-center">
+                    <User className="w-5 h-5 text-white" />
                   </div>
                   <button 
                     onClick={handleLogout}
-                    className="p-2 text-slate-400 hover:text-red-600 transition-colors"
+                    className="p-2 text-dgi-muted hover:text-dgi-primary transition-colors"
                     title="Выйти"
                   >
                     <LogOut className="w-5 h-5" />
@@ -313,7 +313,7 @@ export default function PortalPage() {
               ) : (
                 <button
                   onClick={() => router.push('/login')}
-                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/25 active:scale-95"
+                  className="dgi-btn-primary flex items-center gap-2 px-5 py-2.5 active:scale-95"
                 >
                   <LogIn className="w-5 h-5" />
                   Войти
@@ -329,10 +329,10 @@ export default function PortalPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Hero section */}
         <div className="text-center mb-16">
-          <h2 className="text-4xl font-bold text-slate-900 mb-4">
+          <h2 className="text-4xl font-bold text-dgi-text mb-4 font-heading">
             Добро пожаловать в Портал ДГИ
           </h2>
-          <p className="text-lg text-white max-w-2xl mx-auto">
+          <p className="text-lg text-dgi-muted max-w-2xl mx-auto">
             Единая платформа доступа ко всем корпоративным сервисам Департамента городского имущества Москвы
           </p>
           
@@ -345,10 +345,10 @@ export default function PortalPage() {
               key={service.id}
               onClick={() => handleServiceClick(service)}
               className={`
-                service-card relative bg-white rounded-2xl p-6 border-2 cursor-pointer
+                service-card relative bg-dgi-surface rounded-2xl p-6 border-2 cursor-pointer
                 ${service.status === 'active' 
                   ? 'border-transparent shadow-lg hover:shadow-xl cursor-pointer' 
-                  : 'border-slate-200 opacity-75 cursor-not-allowed'
+                  : 'border-dgi-border opacity-75 cursor-not-allowed'
                 }
               `}
               style={{
@@ -380,10 +380,10 @@ export default function PortalPage() {
                 </div>
                 
                 <div className="flex-1">
-                  <h3 className="text-xl font-semibold text-slate-900 mb-2">
+                  <h3 className="text-xl font-semibold text-dgi-text mb-2 font-heading">
                     {service.name}
                   </h3>
-                  <p className="text-slate-600 text-sm mb-4">
+                  <p className="text-dgi-muted text-sm mb-4">
                     {service.description}
                   </p>
 
@@ -391,12 +391,12 @@ export default function PortalPage() {
                   <div className="flex items-center space-x-2">
                     <span className={`
                       text-sm font-medium
-                      ${service.status === 'active' ? 'text-blue-600' : 'text-slate-400'}
+                      ${service.status === 'active' ? 'text-dgi-primary' : 'text-dgi-muted'}
                     `}>
                       {service.status === 'active' ? 'Перейти' : 'Недоступно'}
                     </span>
                     {service.status === 'active' && (
-                      <ChevronRight className="w-4 h-4 text-blue-600" />
+                      <ChevronRight className="w-4 h-4 text-dgi-primary" />
                     )}
                   </div>
                 </div>
@@ -406,16 +406,16 @@ export default function PortalPage() {
         </div>
 
         {/* Info section */}
-        <div className="mt-16 bg-white rounded-2xl p-8 shadow-sm border border-slate-200">
+        <div className="mt-16 bg-dgi-surface rounded-2xl p-8 shadow-sm border border-dgi-border">
           <div className="flex items-start space-x-4">
-            <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center flex-shrink-0">
-              <Shield className="w-6 h-6 text-blue-600" />
+            <div className="w-12 h-12 bg-red-50 rounded-xl flex items-center justify-center flex-shrink-0">
+              <Shield className="w-6 h-6 text-dgi-primary" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-slate-900 mb-2">
+              <h3 className="text-lg font-semibold text-dgi-text mb-2 font-heading">
                 Информация безопасности
               </h3>
-              <p className="text-slate-600 text-sm">
+              <p className="text-dgi-muted text-sm">
                 Все данные передаются по защищённому соединению. Доступ к сервисам осуществляется 
                 только после авторизации через корпоративную учётную запись.
               </p>
@@ -425,7 +425,7 @@ export default function PortalPage() {
       </main>
 
       {/* Footer */}
-      <footer className="bg-slate-900 text-slate-400 py-8 mt-16">
+      <footer className="bg-[#141414] text-gray-400 py-8 mt-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row items-center justify-between">
             <div className="flex items-center space-x-3 mb-4 md:mb-0">

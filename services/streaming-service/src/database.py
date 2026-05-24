@@ -37,6 +37,9 @@ class Stream(Base):
     visibility = Column(String(32), default="dgi_employees")
     mediamtx_path = Column(String(255))
     recording_dir = Column(String(512))
+    archive_status = Column(String(32))
+    archive_error = Column(String)
+    save_recording = Column(Boolean, default=True, nullable=False)
 
     @classmethod
     async def create(cls, db: AsyncSession, **kwargs):
@@ -49,12 +52,12 @@ class Stream(Base):
                 INSERT INTO streams (
                     id, title, description, user_id, rtmp_key, hls_url, is_live,
                     start_time, end_time, archived_video_id, is_private, created_at,
-                    visibility, mediamtx_path, recording_dir
+                    visibility, mediamtx_path, recording_dir, save_recording
                 )
                 VALUES (
                     :id, :title, :description, :user_id, :rtmp_key, :hls_url, :is_live,
                     :start_time, :end_time, :archived_video_id, :is_private, :created_at,
-                    :visibility, :mediamtx_path, :recording_dir
+                    :visibility, :mediamtx_path, :recording_dir, :save_recording
                 )
                 """
             ),
@@ -74,6 +77,7 @@ class Stream(Base):
                 "visibility": visibility,
                 "mediamtx_path": kwargs.get("mediamtx_path"),
                 "recording_dir": kwargs.get("recording_dir"),
+                "save_recording": kwargs.get("save_recording", True),
             },
         )
         await db.commit()
@@ -126,6 +130,55 @@ class Stream(Base):
         return None
 
     @classmethod
+    async def get_open_session_for_owner(cls, db: AsyncSession, owner_id: str):
+        """Текущая подготовка/эфир (ещё не завершён)."""
+        result = await db.execute(
+            text(
+                """
+                SELECT * FROM streams
+                WHERE user_id = CAST(:uid AS uuid) AND end_time IS NULL
+                ORDER BY created_at DESC
+                LIMIT 1
+                """
+            ),
+            {"uid": owner_id},
+        )
+        row = result.first()
+        if row:
+            return cls(**row._asdict())
+        return None
+
+    @classmethod
+    async def get_streams_for_rtmp_reconcile(cls, db: AsyncSession):
+        """Открытые эфиры, которые могли остаться без RTMP (webhook MediaMTX недоступен)."""
+        result = await db.execute(
+            text(
+                """
+                SELECT * FROM streams
+                WHERE end_time IS NULL AND (is_live = true OR start_time IS NOT NULL)
+                """
+            )
+        )
+        return [cls(**row._asdict()) for row in result.fetchall()]
+
+    @classmethod
+    async def get_recent_ended_for_owner(cls, db: AsyncSession, owner_id: str, limit: int = 8):
+        """Недавно завершённые эфиры (для фоновой архивации на go-live)."""
+        result = await db.execute(
+            text(
+                """
+                SELECT * FROM streams
+                WHERE user_id = CAST(:uid AS uuid) AND end_time IS NOT NULL
+                  AND COALESCE(save_recording, true) = true
+                ORDER BY end_time DESC NULLS LAST, created_at DESC
+                LIMIT :lim
+                """
+            ),
+            {"uid": owner_id, "lim": limit},
+        )
+        return [cls(**row._asdict()) for row in result.fetchall()]
+
+    @classmethod
     async def update_status(
         cls,
         db: AsyncSession,
@@ -136,6 +189,8 @@ class Stream(Base):
         hls_url: str = None,
         archived_video_id: str = None,
         recording_dir: str = None,
+        archive_status: str = None,
+        archive_error: str = None,
     ):
         update_fields = []
         params = {"id": stream_id}
@@ -164,10 +219,35 @@ class Stream(Base):
             update_fields.append("recording_dir = :recording_dir")
             params["recording_dir"] = recording_dir
 
+        if archive_status is not None:
+            update_fields.append("archive_status = :archive_status")
+            params["archive_status"] = archive_status
+
+        if archive_error is not None:
+            update_fields.append("archive_error = :archive_error")
+            params["archive_error"] = archive_error
+
         if update_fields:
             query = f"UPDATE streams SET {', '.join(update_fields)} WHERE id = :id"
             await db.execute(text(query), params)
             await db.commit()
+
+    @classmethod
+    async def reset_archive(cls, db: AsyncSession, stream_id: str):
+        """Сброс зависшей/отменённой архивации — можно создать новый эфир."""
+        await db.execute(
+            text(
+                """
+                UPDATE streams
+                SET archive_status = NULL,
+                    archive_error = NULL,
+                    archived_video_id = NULL
+                WHERE id = :id
+                """
+            ),
+            {"id": stream_id},
+        )
+        await db.commit()
 
     @classmethod
     async def get_by_rtmp_key(cls, db: AsyncSession, rtmp_key: str):
@@ -267,3 +347,10 @@ async def create_tables():
         )
         await conn.execute(text("ALTER TABLE streams ADD COLUMN IF NOT EXISTS mediamtx_path VARCHAR(255)"))
         await conn.execute(text("ALTER TABLE streams ADD COLUMN IF NOT EXISTS recording_dir VARCHAR(512)"))
+        await conn.execute(text("ALTER TABLE streams ADD COLUMN IF NOT EXISTS archive_status VARCHAR(32)"))
+        await conn.execute(text("ALTER TABLE streams ADD COLUMN IF NOT EXISTS archive_error TEXT"))
+        await conn.execute(
+            text(
+                "ALTER TABLE streams ADD COLUMN IF NOT EXISTS save_recording BOOLEAN NOT NULL DEFAULT true"
+            )
+        )

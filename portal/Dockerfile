@@ -1,28 +1,21 @@
-# Multi-stage build for production
+# Multi-stage build for production (context: repo root)
 FROM node:18-alpine AS base
 
-# Install dependencies only when needed
 FROM base AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
-
-# Install dependencies based on the preferred package manager
-COPY package.json ./
+COPY portal/package.json ./
 RUN npm install
 
-# Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
-# Куда portal проксирует /api/auth/* при сборке Next (имя сервиса в Docker-сети)
 ARG AUTH_INTERNAL_URL=http://auth-service:8000
 ENV AUTH_INTERNAL_URL=$AUTH_INTERNAL_URL
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-
-# Build the application
+COPY portal/ .
+COPY shared/ /shared
 RUN npm run build
 
-# Production image, copy all the files and run next
 FROM base AS runner
 WORKDIR /app
 
@@ -32,11 +25,9 @@ ENV NEXT_TELEMETRY_DISABLED 1
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Copy built application
 RUN mkdir .next
 RUN chown nextjs:nodejs .next
 
-# Automatically leverage output traces to reduce image size
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 

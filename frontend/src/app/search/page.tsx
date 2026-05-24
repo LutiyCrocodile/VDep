@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -67,11 +67,11 @@ export default function SearchPage() {
   }, [query]);
 
   return (
-    <div className="min-h-screen bg-[#0f0f0f]">
+    <div className="min-h-screen bg-dgi-bg">
       <Header />
       <Sidebar />
       
-      <main className={`pt-14 min-h-screen bg-[#0f0f0f] transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
+      <main className={`pt-14 min-h-screen bg-dgi-bg transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
         <div className="p-6">
           <h1 className="text-white text-xl mb-4">
             {query ? `Результаты поиска: "${query}"` : 'Поиск'}

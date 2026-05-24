@@ -342,6 +342,21 @@ export const streamsAPI = {
     return response.data;
   },
 
+  getArchiveStatus: async (streamId: string) => {
+    const response = await streamingApiClient.get(`/streams/${streamId}/archive-status`);
+    return response.data;
+  },
+
+  dismissArchive: async (streamId: string) => {
+    const response = await streamingApiClient.post(`/streams/${streamId}/archive/dismiss`);
+    return response.data;
+  },
+
+  retryArchive: async (streamId: string) => {
+    const response = await streamingApiClient.post(`/streams/${streamId}/archive/retry`);
+    return response.data;
+  },
+
   getLiveStreams: async () => {
     const response = await streamingApiClient.get('/streams/live');
     return response.data;
@@ -357,6 +372,7 @@ export const streamsAPI = {
     description?: string;
     visibility: 'dgi_employees' | 'private';
     allowed_user_ids?: string[];
+    save_recording?: boolean;
   }) => {
     const response = await streamingApiClient.post('/streams', data);
     return response.data;
@@ -367,8 +383,14 @@ export const streamsAPI = {
     return response.data;
   },
 
+  /** Эфир завершается только при отключении OBS; endpoint оставлен для совместимости. */
   stopStream: async (streamId: string) => {
     const response = await streamingApiClient.put(`/streams/${streamId}/stop`);
+    return response.data;
+  },
+
+  cancelPreparedStream: async (streamId: string) => {
+    const response = await streamingApiClient.post(`/streams/${streamId}/cancel`);
     return response.data;
   },
 

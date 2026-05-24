@@ -37,67 +37,67 @@ export default function CreateChannelPage() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] to-[#1a1a3e] flex items-center justify-center">
-        <div className="text-white">Войдите в систему для создания канала</div>
+      <div className="min-h-screen dgi-gradient-bg flex items-center justify-center">
+        <div className="text-dgi-text">Войдите в систему для создания канала</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] to-[#1a1a3e] py-12 px-4">
+    <div className="min-h-screen dgi-gradient-bg py-12 px-4">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-4xl font-bold text-white mb-8">Создать канал</h1>
+        <h1 className="text-4xl font-bold text-dgi-text mb-8 font-heading">Создать канал</h1>
         
-        <div className="bg-[#1a1a3e]/50 backdrop-blur-sm rounded-2xl p-8 border border-[#4f46e5]/30">
+        <div className="dgi-card p-8">
           {error && (
-            <div className="bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-lg mb-6">
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6 text-sm">
               {typeof error === 'string' ? error : JSON.stringify(error)}
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label className="block text-white text-sm font-medium mb-2">
+              <label className="block text-dgi-text text-sm font-medium mb-2">
                 Название канала
               </label>
               <input
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full px-4 py-3 bg-[#0a0a1a]/50 border border-[#4f46e5]/30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#4f46e5]/50"
+                className="dgi-input"
                 placeholder="Мой канал"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-white text-sm font-medium mb-2">
+              <label className="block text-dgi-text text-sm font-medium mb-2">
                 Описание
               </label>
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="w-full px-4 py-3 bg-[#0a0a1a]/50 border border-[#4f46e5]/30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#4f46e5]/50 min-h-[120px]"
+                className="dgi-input min-h-[120px]"
                 placeholder="О чем ваш канал..."
               />
             </div>
 
             <div>
-              <label className="block text-white text-sm font-medium mb-2">
+              <label className="block text-dgi-text text-sm font-medium mb-2">
                 Имя пользователя (handle)
               </label>
               <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">@</span>
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-dgi-muted">@</span>
                 <input
                   type="text"
                   value={formData.handle}
                   onChange={(e) => setFormData({ ...formData, handle: e.target.value })}
-                  className="w-full pl-8 pr-4 py-3 bg-[#0a0a1a]/50 border border-[#4f46e5]/30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#4f46e5]/50"
+                  className="dgi-input pl-8"
                   placeholder="mychannel"
                   required
                 />
               </div>
-              <p className="text-gray-400 text-sm mt-2">
+              <p className="text-dgi-muted text-sm mt-2">
                 Это будет ваш уникальный идентификатор канала
               </p>
             </div>
@@ -105,7 +105,7 @@ export default function CreateChannelPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-gradient-to-r from-[#4f46e5] to-[#7c3aed] text-white font-semibold rounded-lg hover:from-[#4338ca] hover:to-[#6d28d9] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="dgi-btn-primary w-full py-3 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Создание...' : 'Создать канал'}
             </button>

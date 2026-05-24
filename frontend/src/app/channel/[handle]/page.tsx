@@ -142,12 +142,12 @@ export default function PublicChannelPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] to-[#1a1a3e]">
+      <div className="min-h-screen bg-gradient-to-br from-dgi-bg to-dgi-surface">
         <Header />
         <Sidebar />
         <main className="ml-64 pt-14 min-h-screen">
           <div className="flex items-center justify-center py-12">
-            <div className="w-8 h-8 border-2 border-[#4f46e5] border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-2 border-dgi-primary border-t-transparent rounded-full animate-spin" />
           </div>
         </main>
       </div>
@@ -156,17 +156,17 @@ export default function PublicChannelPage() {
 
   if (error || !channel) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] to-[#1a1a3e]">
+      <div className="min-h-screen bg-gradient-to-br from-dgi-bg to-dgi-surface">
         <Header />
         <Sidebar />
         <main className="ml-64 pt-14 min-h-screen">
           <div className="max-w-4xl mx-auto p-6">
-            <div className="bg-[#1a1a3e]/50 backdrop-blur-sm rounded-2xl p-8 border border-[#4f46e5]/30 text-center">
+            <div className="bg-dgi-surface/80 backdrop-blur-sm rounded-2xl p-8 border border-dgi-primary/30 text-center">
               <h1 className="text-2xl font-bold text-white mb-4">Канал не найден</h1>
               <p className="text-gray-400 mb-6">Канал с именем @{handle} не существует</p>
               <Link
                 href="/"
-                className="bg-gradient-to-r from-[#4f46e5] to-[#7c3aed] hover:from-[#4338ca] hover:to-[#6d28d9] text-white px-6 py-3 rounded-lg font-medium transition-all"
+                className="bg-gradient-to-r from-dgi-primary to-dgi-primary-mid hover:from-dgi-primary-mid hover:to-dgi-primary-dark text-white px-6 py-3 rounded-lg font-medium transition-all"
               >
                 На главную
               </Link>
@@ -178,7 +178,7 @@ export default function PublicChannelPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] to-[#1a1a3e]">
+    <div className="min-h-screen bg-gradient-to-br from-dgi-bg to-dgi-surface">
       <Header />
       <Sidebar />
       <main className={`pt-14 min-h-screen transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
@@ -187,20 +187,20 @@ export default function PublicChannelPage() {
           {channel.banner_url ? (
             <div className="h-48 bg-cover bg-center" style={{ backgroundImage: `url(${channel.banner_url})` }} />
           ) : (
-            <div className="h-32 bg-gradient-to-r from-[#1a1a3e] to-[#2a2a5e]" />
+            <div className="h-32 bg-gradient-to-r from-dgi-primary/10 to-dgi-surface-hover" />
           )}
           
           {/* Channel Info */}
           <div className="px-6 py-6">
             <div className="flex items-start gap-6 -mt-16 mb-6">
-              <div className="w-32 h-32 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-5xl flex-shrink-0 shadow-lg shadow-indigo-500/20 border-4 border-[#0a0a1a]">
+              <div className="w-32 h-32 rounded-full bg-gradient-to-br from-dgi-primary to-dgi-primary-mid flex items-center justify-center text-white font-bold text-5xl flex-shrink-0 shadow-lg shadow-[0_4px_14px_rgba(200,20,30,0.2)] border-4 border-dgi-bg">
                 {channel.name[0]?.toUpperCase() || 'C'}
               </div>
               <div className="flex-1 pt-16">
                 <div className="flex items-center gap-3">
-                  <h1 className="text-2xl font-bold text-white">{channel.name}</h1>
+                  <h1 className="text-2xl font-bold text-dgi-text font-heading">{channel.name}</h1>
                   {channel.is_verified && (
-                    <span className="text-indigo-400" title="Проверенный канал">✓</span>
+                    <span className="text-dgi-primary" title="Проверенный канал">✓</span>
                   )}
                 </div>
                 <p className="text-gray-400">@{channel.handle}</p>
@@ -212,7 +212,7 @@ export default function PublicChannelPage() {
                 {isOwnChannel ? (
                   <Link
                     href="/upload"
-                    className="bg-gradient-to-r from-[#4f46e5] to-[#7c3aed] hover:from-[#4338ca] hover:to-[#6d28d9] text-white px-6 py-2 rounded-lg font-medium transition-all"
+                    className="bg-gradient-to-r from-dgi-primary to-dgi-primary-mid hover:from-dgi-primary-mid hover:to-dgi-primary-dark text-white px-6 py-2 rounded-lg font-medium transition-all"
                   >
                     Загрузить видео
                   </Link>
@@ -222,7 +222,7 @@ export default function PublicChannelPage() {
                     className={`px-6 py-2 rounded-lg font-medium transition-all ${
                       isSubscribed
                         ? 'bg-gray-600 text-white hover:bg-gray-500'
-                        : 'bg-gradient-to-r from-[#4f46e5] to-[#7c3aed] hover:from-[#4338ca] hover:to-[#6d28d9] text-white'
+                        : 'bg-gradient-to-r from-dgi-primary to-dgi-primary-mid hover:from-dgi-primary-mid hover:to-dgi-primary-dark text-white'
                     }`}
                   >
                     {isSubscribed ? 'Отписаться' : 'Подписаться'}
@@ -237,14 +237,14 @@ export default function PublicChannelPage() {
 
             {/* Videos Section */}
             <div className="mt-8">
-              <h2 className="text-xl font-bold text-white mb-4">Видео</h2>
+              <h2 className="text-xl font-bold text-dgi-text mb-4 font-heading">Видео</h2>
               {videos.length === 0 ? (
-                <div className="text-center py-12 bg-[#1a1a3e]/30 rounded-2xl">
+                <div className="text-center py-12 bg-dgi-surface/50 rounded-2xl">
                   <p className="text-gray-400">На канале пока нет видео</p>
                   {isOwnChannel && (
                     <Link
                       href="/upload"
-                      className="inline-block mt-4 bg-gradient-to-r from-[#4f46e5] to-[#7c3aed] hover:from-[#4338ca] hover:to-[#6d28d9] text-white px-6 py-2 rounded-lg font-medium transition-all"
+                      className="inline-block mt-4 bg-gradient-to-r from-dgi-primary to-dgi-primary-mid hover:from-dgi-primary-mid hover:to-dgi-primary-dark text-white px-6 py-2 rounded-lg font-medium transition-all"
                     >
                       Загрузить первое видео
                     </Link>
@@ -278,16 +278,16 @@ export default function PublicChannelPage() {
       {/* Delete Confirmation Modal */}
       {videoToDelete && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-[#1a1a3e] border border-[#4f46e5]/30 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+          <div className="bg-dgi-surface border border-dgi-primary/30 rounded-2xl p-6 max-w-md w-full shadow-2xl">
             <h3 className="text-xl font-bold text-white mb-4">Удалить видео?</h3>
-            <p className="text-zinc-400 mb-6">
+            <p className="text-dgi-muted mb-6">
               Вы уверены, что хотите удалить видео &quot;{videoToDelete.title}&quot;? Это действие нельзя отменить.
             </p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setVideoToDelete(null)}
                 disabled={isDeleting}
-                className="px-4 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-white transition-colors disabled:opacity-50"
+                className="px-4 py-2 rounded-lg bg-dgi-surface-hover hover:bg-gray-200 text-dgi-text border border-dgi-border transition-colors disabled:opacity-50"
               >
                 Отмена
               </button>

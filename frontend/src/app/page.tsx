@@ -140,45 +140,45 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0f0f0f]">
+    <div className="min-h-screen bg-dgi-bg">
       <Header />
       <Sidebar />
       
-      <main className={`pt-14 min-h-screen bg-[#0f0f0f] transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
+      <main className={`pt-14 min-h-screen bg-dgi-bg transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
         <div className="p-6">
           {!searchQuery.trim() && isAuthenticated && (
             <section className="mb-10">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-white text-xl font-semibold flex items-center gap-2">
+                <h2 className="text-dgi-text text-xl font-semibold flex items-center gap-2 font-heading">
                   <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                   Прямые эфиры
                 </h2>
-                <Link href="/streams" className="text-sm text-indigo-400 hover:text-indigo-300">
+                <Link href="/streams" className="text-sm text-dgi-primary hover:text-dgi-primary-mid">
                   Все трансляции →
                 </Link>
               </div>
               {liveLoading && liveStreams.length === 0 ? (
-                <div className="h-12 flex items-center text-gray-500 text-sm">Загрузка эфиров…</div>
+                <div className="h-12 flex items-center text-dgi-muted text-sm">Загрузка эфиров…</div>
               ) : liveStreams.length === 0 ? (
-                <p className="text-gray-500 text-sm">Сейчас нет доступных вам прямых эфиров.</p>
+                <p className="text-dgi-muted text-sm">Сейчас нет доступных вам прямых эфиров.</p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {liveStreams.map((s) => (
                     <Link
                       key={s.id}
                       href={`/stream/${s.id}`}
-                      className="block rounded-xl border border-red-900/50 bg-gradient-to-br from-[#1a0505] to-[#0f0f0f] p-4 hover:border-red-500/60 transition-colors"
+                      className="block rounded-xl border border-dgi-border bg-dgi-surface p-4 hover:border-dgi-primary/40 hover:shadow-md transition-all"
                     >
-                      <div className="flex items-center gap-2 text-red-400 text-xs font-semibold uppercase tracking-wide mb-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                      <div className="flex items-center gap-2 text-dgi-primary text-xs font-semibold uppercase tracking-wide mb-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-dgi-primary animate-pulse" />
                         Live
                       </div>
-                      <h3 className="text-white font-medium line-clamp-2">{s.title}</h3>
+                      <h3 className="text-dgi-text font-medium line-clamp-2">{s.title}</h3>
                       {s.owner_username && (
-                        <p className="text-gray-400 text-sm mt-2">Ведущий: {s.owner_username}</p>
+                        <p className="text-dgi-muted text-sm mt-2">Ведущий: {s.owner_username}</p>
                       )}
                       {s.created_at && (
-                        <p className="text-gray-600 text-xs mt-2">{formatLiveDate(s.created_at)}</p>
+                        <p className="text-dgi-muted text-xs mt-2 opacity-80">{formatLiveDate(s.created_at)}</p>
                       )}
                     </Link>
                   ))}
@@ -188,9 +188,9 @@ export default function Home() {
           )}
 
           {!searchQuery.trim() && !authLoading && !isAuthenticated && (
-            <section className="mb-10 rounded-xl border border-gray-800 bg-[#181818] p-4">
-              <p className="text-gray-400 text-sm">
-                <Link href="/login" className="text-indigo-400 hover:underline">
+            <section className="mb-10 rounded-xl border border-dgi-border bg-dgi-surface p-4 shadow-sm">
+              <p className="text-dgi-muted text-sm">
+                <Link href="/login" className="text-dgi-primary hover:underline">
                   Войдите
                 </Link>
                 , чтобы видеть прямые эфиры сотрудников ДГИ на главной.
@@ -207,7 +207,7 @@ export default function Home() {
                 className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all flex items-center gap-2 ${
                   activeClassification === filter.value
                     ? `${filter.color} text-white shadow-lg`
-                    : 'bg-[#272727] text-gray-300 hover:bg-[#3f3f3f]'
+                    : 'bg-dgi-surface-hover text-dgi-muted hover:bg-gray-200 border border-dgi-border'
                 }`}
               >
                 {activeClassification === filter.value && (
@@ -220,23 +220,23 @@ export default function Home() {
 
           {isLoading ? (
             <div className="flex items-center justify-center h-64">
-              <div className="w-10 h-10 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+              <div className="w-10 h-10 border-3 border-dgi-primary border-t-transparent rounded-full animate-spin" />
             </div>
           ) : error ? (
             <div className="text-center py-12">
-              <p className="text-red-400">{typeof error === 'string' ? error : JSON.stringify(error)}</p>
+              <p className="text-red-600">{typeof error === 'string' ? error : JSON.stringify(error)}</p>
             </div>
           ) : (
             <>
               {searchQuery && (
-                <h2 className="text-white text-xl font-semibold mb-6 flex items-center gap-2">
-                  <span className="w-1.5 h-6 bg-gradient-to-b from-indigo-500 to-violet-600 rounded-full"></span>
+                <h2 className="text-dgi-text text-xl font-semibold mb-6 flex items-center gap-2 font-heading">
+                  <span className="w-1.5 h-6 bg-gradient-to-b from-dgi-primary to-dgi-primary-mid rounded-full"></span>
                   Результаты поиска: "{searchQuery}"
                 </h2>
               )}
               {filteredVideos.length === 0 ? (
                 <div className="text-center py-12">
-                  <p className="text-gray-400 text-lg">
+                  <p className="text-dgi-muted text-lg">
                     {searchQuery ? 'По вашему запросу ничего не найдено' : 'Нет доступных видео'}
                   </p>
                 </div>

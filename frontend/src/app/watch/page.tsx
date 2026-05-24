@@ -464,10 +464,10 @@ export default function WatchPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#0a0a1a]">
+      <div className="min-h-screen bg-dgi-bg">
         <Header />
         <div className="flex items-center justify-center h-screen">
-          <div className="w-10 h-10 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-10 h-10 border-3 border-dgi-primary border-t-transparent rounded-full animate-spin" />
         </div>
       </div>
     );
@@ -475,11 +475,11 @@ export default function WatchPage() {
 
   if (error || !video) {
     return (
-      <div className="min-h-screen bg-[#0a0a1a]">
+      <div className="min-h-screen bg-dgi-bg">
         <Header />
         <div className="flex flex-col items-center justify-center h-screen">
-          <p className="text-white text-xl">{error || 'Видео не найдено'}</p>
-          <Link href="/" className="mt-4 text-indigo-400 hover:text-indigo-300 transition-colors">
+          <p className="text-dgi-text text-xl">{error || 'Видео не найдено'}</p>
+          <Link href="/" className="mt-4 text-dgi-primary hover:text-dgi-primary-mid transition-colors">
             Вернуться на главную
           </Link>
         </div>
@@ -488,17 +488,17 @@ export default function WatchPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0a1a]">
+    <div className="min-h-screen bg-dgi-bg">
       <Header />
       <Sidebar />
       
-      <main className={`pt-14 min-h-screen bg-[#0a0a1a] transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
+      <main className={`pt-14 min-h-screen bg-dgi-bg transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
         <div className="flex gap-6 p-6">
           {/* Main content */}
           <div className="flex-1 max-w-5xl">
             {/* Video Player */}
             <div 
-              className="relative aspect-video bg-black rounded-2xl overflow-hidden group border border-[#27274a] shadow-2xl shadow-indigo-500/10"
+              className="relative aspect-video bg-black rounded-2xl overflow-hidden group border border-dgi-border shadow-2xl shadow-[0_4px_14px_rgba(200,20,30,0.1)]"
               onMouseMove={handleMouseActivity}
               onMouseEnter={handleMouseActivity}
               onClick={() => {
@@ -558,7 +558,7 @@ export default function WatchPage() {
               {/* Center loading spinner - показываем пока идет загрузка */}
               {isVideoLoading && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-                  <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                  <div className="w-16 h-16 border-4 border-dgi-primary border-t-transparent rounded-full animate-spin" />
                 </div>
               )}
 
@@ -570,7 +570,7 @@ export default function WatchPage() {
                 >
                   <button 
                     onClick={(e) => { e.stopPropagation(); handlePlay(); }}
-                    className="w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg bg-gradient-to-br from-indigo-500 to-violet-600 hover:from-indigo-400 hover:to-violet-500 hover:shadow-indigo-500/60 hover:scale-110 shadow-indigo-500/40"
+                    className="w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg bg-gradient-to-br from-dgi-primary to-dgi-primary-mid hover:from-dgi-primary hover:to-dgi-primary-mid hover:shadow-[0_4px_14px_rgba(200,20,30,0.45)] hover:scale-110 shadow-[0_4px_14px_rgba(200,20,30,0.35)]"
                   >
                     <svg className="w-12 h-12 ml-1 text-white" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
@@ -587,7 +587,7 @@ export default function WatchPage() {
                 >
                   <button 
                     onClick={(e) => { e.stopPropagation(); handlePlay(); }}
-                    className="w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 bg-indigo-500/60 hover:bg-indigo-500/80 hover:scale-110"
+                    className="w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 bg-dgi-primary/60 hover:bg-dgi-primary/80 hover:scale-110"
                   >
                     <svg className="w-12 h-12 ml-1 text-white" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
@@ -597,18 +597,18 @@ export default function WatchPage() {
               )}
 
               {/* Controls overlay - с анимацией скрытия вниз */}
-              <div className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[#0a0a1a] via-[#0a0a1a]/80 to-transparent p-6 z-30 transition-transform duration-300 ease-out ${mouseActive || !isPlaying ? 'translate-y-0' : 'translate-y-full'}`}>
+              <div className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-dgi-bg via-dgi-bg/80 to-transparent p-6 z-30 transition-transform duration-300 ease-out ${mouseActive || !isPlaying ? 'translate-y-0' : 'translate-y-full'}`}>
                 {/* Progress bar - неактивна пока грузится */}
                 <div 
                   ref={progressRef}
-                  className={`w-full h-1.5 bg-[#27274a] rounded-full mb-4 ${playerReady ? 'cursor-pointer group/progress' : 'cursor-not-allowed'}`}
+                  className={`w-full h-1.5 bg-dgi-border rounded-full mb-4 ${playerReady ? 'cursor-pointer group/progress' : 'cursor-not-allowed'}`}
                   onMouseDown={playerReady ? handleProgressMouseDown : undefined}
                   onMouseMove={playerReady ? handleProgressMouseMove : undefined}
                   onMouseUp={playerReady ? handleProgressMouseUp : undefined}
                   onMouseLeave={playerReady ? handleProgressMouseUp : undefined}
                 >
                   <div 
-                    className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full relative"
+                    className="h-full bg-gradient-to-r from-dgi-primary to-dgi-primary-mid rounded-full relative"
                     style={{ width: `${(currentTime / (videoDuration || 1)) * 100}%` }}
                   >
                     <div className={`absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full transition-opacity ${playerReady ? 'opacity-0 group-hover/progress:opacity-100' : 'opacity-0'}`} />
@@ -640,18 +640,18 @@ export default function WatchPage() {
                     <div className="relative">
                       <button 
                         onClick={() => setShowQualityMenu(!showQualityMenu)}
-                        className="px-3 py-1 bg-[#1a1a3e]/80 hover:bg-[#252550] text-white text-sm rounded-lg transition-colors border border-[#27274a]"
+                        className="px-3 py-1 bg-dgi-surface/80 hover:bg-dgi-surface-hover text-white text-sm rounded-lg transition-colors border border-dgi-border"
                       >
                         {currentQuality === 'auto' ? 'Авто' : currentQuality}
                       </button>
                       {showQualityMenu && (
-                        <div className="absolute bottom-full right-0 mb-2 bg-[#1a1a3e] border border-[#27274a] rounded-xl overflow-hidden shadow-xl min-w-[120px]">
+                        <div className="absolute bottom-full right-0 mb-2 bg-dgi-surface border border-dgi-border rounded-xl overflow-hidden shadow-xl min-w-[120px]">
                           <button
                             onClick={() => { handleQualityChange('auto'); setShowQualityMenu(false); }}
                             className={`w-full px-4 py-2 text-sm text-left transition-colors ${
                               currentQuality === 'auto'
-                                ? 'bg-gradient-to-r from-indigo-600/30 to-violet-600/30 text-white'
-                                : 'text-zinc-400 hover:bg-[#252550] hover:text-white'
+                                ? 'bg-gradient-to-r from-dgi-primary/30 to-dgi-primary-mid/30 text-white'
+                                : 'text-zinc-400 hover:bg-dgi-surface-hover hover:text-white'
                             }`}
                           >
                             Авто
@@ -662,8 +662,8 @@ export default function WatchPage() {
                               onClick={() => { handleQualityChange(quality.name); setShowQualityMenu(false); }}
                               className={`w-full px-4 py-2 text-sm text-left transition-colors ${
                                 currentQuality === quality.name
-                                  ? 'bg-gradient-to-r from-indigo-600/30 to-violet-600/30 text-white'
-                                  : 'text-zinc-400 hover:bg-[#252550] hover:text-white'
+                                  ? 'bg-gradient-to-r from-dgi-primary/30 to-dgi-primary-mid/30 text-white'
+                                  : 'text-zinc-400 hover:bg-dgi-surface-hover hover:text-white'
                               }`}
                             >
                               {quality.name}
@@ -685,7 +685,7 @@ export default function WatchPage() {
                         step="0.1"
                         value={volume}
                         onChange={handleVolumeChange}
-                        className="w-20 h-1 bg-[#27274a] rounded-full appearance-none cursor-pointer accent-indigo-500"
+                        className="w-20 h-1 bg-dgi-border rounded-full appearance-none cursor-pointer accent-dgi-primary"
                       />
                     </div>
                     
@@ -705,32 +705,32 @@ export default function WatchPage() {
 
             {/* Video info */}
             <div className="mt-6">
-              <h1 className="text-2xl font-bold text-white">{video.title}</h1>
+              <h1 className="text-2xl font-bold text-dgi-text font-heading">{video.title}</h1>
               
               <div className="flex items-center justify-between mt-4">
                 <div className="flex items-center gap-4">
                   <Link
                     href={video.channel_handle ? `/channel/${video.channel_handle}` : (video.owner_username ? `/channel/${video.owner_username}` : '#')}
-                    className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/40 transition-all"
+                    className="w-12 h-12 rounded-full bg-gradient-to-br from-dgi-primary to-dgi-primary-mid flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-[0_4px_14px_rgba(200,20,30,0.2)] hover:shadow-[0_4px_14px_rgba(200,20,30,0.35)] transition-all"
                   >
                     {video.owner_username?.[0]?.toUpperCase() || 'U'}
                   </Link>
                   <div>
                     <Link
                       href={video.channel_handle ? `/channel/${video.channel_handle}` : (video.owner_username ? `/channel/${video.owner_username}` : '#')}
-                      className="text-white font-semibold hover:text-indigo-400 transition-colors block"
+                      className="text-dgi-text font-semibold hover:text-dgi-primary transition-colors block"
                     >
                       {video.owner_username || 'Неизвестный'}
                     </Link>
-                    <p className="text-zinc-400 text-sm">{formatViews(video.views_count)} просмотров • {formatDate(video.created_at)}</p>
+                    <p className="text-dgi-muted text-sm">{formatViews(video.views_count)} просмотров • {formatDate(video.created_at)}</p>
                   </div>
                   {video.channel_id && (
                     <button
                       onClick={handleSubscribe}
                       className={`ml-4 px-6 py-2.5 rounded-full text-sm font-semibold transition-all duration-200 shadow-lg ${
                         isSubscribed
-                          ? 'bg-zinc-700 text-white hover:bg-zinc-600'
-                          : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-indigo-500/20 hover:shadow-indigo-500/40'
+                          ? 'bg-dgi-surface-hover text-dgi-text border border-dgi-border hover:bg-gray-200'
+                          : 'bg-gradient-to-r from-dgi-primary to-dgi-primary-mid hover:opacity-90 text-white shadow-[0_4px_14px_rgba(200,20,30,0.15)]'
                       }`}
                     >
                       {isSubscribed ? 'Подписан' : 'Подписаться'}
@@ -743,20 +743,20 @@ export default function WatchPage() {
                     onClick={handleLike}
                     className={`flex items-center gap-2 px-5 py-2.5 rounded-full transition-all duration-200 border ${
                       userLiked
-                        ? 'bg-gradient-to-r from-indigo-600 to-violet-600 border-transparent text-white'
-                        : 'bg-[#1a1a3e] hover:bg-[#252550] text-white border-[#27274a] hover:border-indigo-500/30'
+                        ? 'bg-gradient-to-r from-dgi-primary to-dgi-primary-mid border-transparent text-white'
+                        : 'bg-dgi-surface hover:bg-dgi-surface-hover text-dgi-text border-dgi-border hover:border-dgi-primary/30'
                     }`}
                   >
-                    <svg className={`w-5 h-5 ${userLiked ? 'text-white' : 'text-indigo-400'}`} fill="currentColor" viewBox="0 0 20 20">
+                    <svg className={`w-5 h-5 ${userLiked ? 'text-white' : 'text-dgi-primary'}`} fill="currentColor" viewBox="0 0 20 20">
                       <path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" />
                     </svg>
                     <span className="font-medium">{userLiked ? 'Нравится' : 'Нравится'} {likesCount > 0 && `(${formatViews(likesCount)})`}</span>
                   </button>
                   <button 
                     onClick={handleShare}
-                    className="flex items-center gap-2 bg-[#1a1a3e] hover:bg-[#252550] text-white px-5 py-2.5 rounded-full transition-all duration-200 border border-[#27274a] hover:border-indigo-500/30"
+                    className="flex items-center gap-2 bg-dgi-surface hover:bg-dgi-surface-hover text-dgi-text px-5 py-2.5 rounded-full transition-all duration-200 border border-dgi-border hover:border-dgi-primary/30 shadow-sm"
                   >
-                    <svg className="w-5 h-5 text-violet-400" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-5 h-5 text-dgi-primary" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" />
                     </svg>
                     <span className="font-medium">Поделиться</span>
@@ -765,36 +765,36 @@ export default function WatchPage() {
               </div>
 
               {/* Description */}
-              <div className="mt-4 bg-[#1a1a3e] border border-[#27274a] rounded-xl p-5">
-                <p className="text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap">{video.description || 'Описание отсутствует'}</p>
+              <div className="mt-4 bg-dgi-surface border border-dgi-border rounded-xl p-5">
+                <p className="text-dgi-text text-sm leading-relaxed whitespace-pre-wrap">{video.description || 'Описание отсутствует'}</p>
               </div>
             </div>
           </div>
 
           {/* Related videos */}
           <div className="w-96 flex-shrink-0">
-            <h3 className="text-white font-semibold mb-4 text-lg">Похожие видео</h3>
+            <h3 className="text-dgi-text font-semibold mb-4 text-lg font-heading">Похожие видео</h3>
             <div className="space-y-4">
               {relatedVideos.map((v) => (
                 <Link key={v.id} href={`/watch?v=${v.id}`} className="flex gap-3 group">
-                  <div className="relative w-40 aspect-video rounded-xl overflow-hidden bg-[#1a1a3e] border border-[#27274a] flex-shrink-0 group-hover:border-indigo-500/30 transition-all duration-200">
+                  <div className="relative w-40 aspect-video rounded-xl overflow-hidden bg-dgi-surface border border-dgi-border flex-shrink-0 group-hover:border-dgi-primary/30 transition-all duration-200">
                     <img 
                       src={v.thumbnail_url || `https://via.placeholder.com/160x90/1a1a3e/FFFFFF?text=${encodeURIComponent(v.title.substring(0, 15))}`}
                       alt={v.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                     {v.duration && (
-                      <div className="absolute bottom-1.5 right-1.5 bg-[#0a0a1a]/90 text-white text-xs px-1.5 py-0.5 rounded font-medium">
+                      <div className="absolute bottom-1.5 right-1.5 bg-dgi-bg/90 text-white text-xs px-1.5 py-0.5 rounded font-medium">
                         {formatDuration(v.duration)}
                       </div>
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="text-white text-sm font-medium line-clamp-2 group-hover:text-indigo-400 transition-colors duration-200">
+                    <h4 className="text-dgi-text text-sm font-medium line-clamp-2 group-hover:text-dgi-primary transition-colors duration-200">
                       {v.title}
                     </h4>
-                    <p className="text-zinc-400 text-xs mt-1">{v.owner_username}</p>
-                    <p className="text-zinc-500 text-xs">{formatViews(v.views_count)} просмотров</p>
+                    <p className="text-dgi-muted text-xs mt-1">{v.owner_username}</p>
+                    <p className="text-dgi-muted text-xs opacity-80">{formatViews(v.views_count)} просмотров</p>
                   </div>
                 </Link>
               ))}
@@ -805,7 +805,7 @@ export default function WatchPage() {
       
       {/* Share Toast */}
       {showShareToast && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-[#1a1a3e] border border-[#27274a] text-white px-6 py-3 rounded-xl shadow-xl z-50 animate-fade-in">
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-dgi-surface border border-dgi-border text-dgi-text px-6 py-3 rounded-xl shadow-xl z-50 animate-fade-in">
           <div className="flex items-center gap-2">
             <svg className="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />

@@ -21,9 +21,12 @@ class Settings(BaseSettings):
     public_rtmp_port: int = int(os.getenv("PUBLIC_RTMP_PORT", "1935"))
     public_hls_base: str = os.getenv("PUBLIC_HLS_BASE", "http://localhost:8888")
     rtmp_app: str = os.getenv("RTMP_APP", "live")
+    mediamtx_api_url: str = os.getenv("MEDIAMTX_API_URL", "http://mediamtx:9997")
 
     # Shared volume with MediaMTX recordings
     recordings_path: str = os.getenv("RECORDINGS_PATH", "/recordings")
+    # После остановки эфира: если дольше — считаем зависшей архивацией
+    archive_stale_seconds: int = int(os.getenv("ARCHIVE_STALE_SECONDS", "120"))
 
     # RTMP settings (metadata)
     rtmp_port: int = int(os.getenv("RTMP_PORT", "1935"))

@@ -31,7 +31,8 @@ pathDefaults:
   source: publisher
   record: yes
   recordPath: /recordings/%path/%Y-%m-%d_%H-%M-%S-%f
-  runOnNotReady: sh -c "curl -sfG --data-urlencode path=\"$MTX_PATH\" http://streaming-service:8002/internal/mediamtx/not-ready"
+  # В образе mediamtx нет shell/curl — завершение эфира: опрос API MediaMTX в streaming-service
+  # runOnReady / runOnNotReady отключены
 
 paths:
   all_others:

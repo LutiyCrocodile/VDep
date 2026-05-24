@@ -40,7 +40,7 @@ export default function Sidebar() {
   }, [isAuthenticated]);
 
   return (
-    <aside className={`fixed left-0 top-14 h-[calc(100vh-56px)] bg-[#0a0a1a] overflow-y-auto z-40 border-r border-[#27274a] transition-all duration-300 ease-in-out ${isCollapsed ? 'w-0 opacity-0' : 'w-64 opacity-100'}`}>
+    <aside className={`fixed left-0 top-14 h-[calc(100vh-56px)] bg-dgi-surface overflow-y-auto z-40 border-r border-dgi-border transition-all duration-300 ease-in-out ${isCollapsed ? 'w-0 opacity-0' : 'w-64 opacity-100'}`}>
       <div className="py-3 whitespace-nowrap">
         <ul className="space-y-1 px-3">
           {menuItems.map((item) => (
@@ -49,8 +49,8 @@ export default function Sidebar() {
                 href={item.href}
                 className={`flex items-center gap-4 px-3 py-2 rounded-xl transition-all duration-200 ${
                   pathname === item.href
-                    ? 'bg-gradient-to-r from-indigo-600/20 to-violet-600/20 text-white border border-indigo-500/30'
-                    : 'text-zinc-400 hover:bg-[#252550] hover:text-white'
+                    ? 'bg-gradient-to-r from-dgi-primary/15 to-dgi-primary-mid/15 text-dgi-primary border border-dgi-primary/30 font-medium'
+                    : 'text-dgi-muted hover:bg-dgi-surface-hover hover:text-dgi-text'
                 }`}
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
@@ -62,12 +62,12 @@ export default function Sidebar() {
           ))}
         </ul>
 
-        <hr className="my-3 border-[#27274a]" />
+        <hr className="my-3 border-dgi-border" />
 
         {isAuthenticated && (
           <>
             <div className="px-6 py-2">
-              <h3 className="text-sm font-medium text-zinc-500">Вы</h3>
+              <h3 className="text-sm font-medium text-dgi-muted">Вы</h3>
             </div>
             <ul className="space-y-1 px-3">
               {getUserMenuItems(userChannel).map((item) => (
@@ -76,8 +76,8 @@ export default function Sidebar() {
                     href={item.href}
                     className={`flex items-center gap-4 px-3 py-2 rounded-xl transition-all duration-200 ${
                       pathname === item.href
-                        ? 'bg-gradient-to-r from-indigo-600/20 to-violet-600/20 text-white border border-indigo-500/30'
-                        : 'text-zinc-400 hover:bg-[#252550] hover:text-white'
+                        ? 'bg-gradient-to-r from-dgi-primary/15 to-dgi-primary-mid/15 text-dgi-primary border border-dgi-primary/30 font-medium'
+                        : 'text-dgi-muted hover:bg-dgi-surface-hover hover:text-dgi-text'
                     }`}
                   >
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
@@ -88,19 +88,19 @@ export default function Sidebar() {
                 </li>
               ))}
             </ul>
-            <hr className="my-3 border-[#27274a]" />
+            <hr className="my-3 border-dgi-border" />
           </>
         )}
 
         <div className="px-6 py-2">
-          <h3 className="text-sm font-medium text-zinc-500">Настройки</h3>
+          <h3 className="text-sm font-medium text-dgi-muted">Настройки</h3>
         </div>
         <ul className="space-y-1 px-3">
           {isAuthenticated && (
             <li>
               <button
                 onClick={logout}
-                className="w-full flex items-center gap-4 px-3 py-2 rounded-xl text-zinc-400 hover:bg-[#252550] hover:text-white transition-all duration-200"
+                className="w-full flex items-center gap-4 px-3 py-2 rounded-xl text-dgi-muted hover:bg-dgi-surface-hover hover:text-dgi-text transition-all duration-200"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />

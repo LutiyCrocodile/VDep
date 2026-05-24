@@ -287,14 +287,14 @@ export default function UploadPage() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] to-[#1a1a3e]">
+      <div className="min-h-screen dgi-gradient-bg">
         <Header />
         <main className={`pt-14 min-h-screen flex items-center justify-center transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
           <div className="text-center">
             <p className="text-white text-xl mb-4">Необходимо войти в систему</p>
             <button
               onClick={() => router.push('/login')}
-              className="bg-gradient-to-r from-[#4f46e5] to-[#7c3aed] hover:from-[#4338ca] hover:to-[#6d28d9] text-white px-6 py-3 rounded-lg font-medium transition-all"
+              className="bg-gradient-to-r from-dgi-primary to-dgi-primary-mid hover:from-dgi-primary-mid hover:to-dgi-primary-dark text-white px-6 py-3 rounded-lg font-medium transition-all"
             >
               Войти
             </button>
@@ -305,20 +305,20 @@ export default function UploadPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] to-[#1a1a3e]">
+    <div className="min-h-screen dgi-gradient-bg">
       <Header />
       <Sidebar />
       
       <main className={`pt-14 min-h-screen transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
         <div className="max-w-2xl mx-auto p-6">
-          <h1 className="text-3xl font-bold text-white mb-6">Загрузка видео</h1>
+          <h1 className="text-3xl font-bold text-dgi-text mb-6 font-heading">Загрузка видео</h1>
 
           {!userChannel && !loadingChannel && (
-            <div className="bg-[#1a1a3e]/50 backdrop-blur-sm rounded-2xl p-6 border border-[#4f46e5]/30 mb-6">
+            <div className="bg-dgi-surface/80 backdrop-blur-sm rounded-2xl p-6 border border-dgi-primary/30 mb-6">
               <p className="text-white mb-4">Создайте канал для загрузки видео</p>
               <button
                 onClick={() => router.push('/create-channel')}
-                className="bg-gradient-to-r from-[#4f46e5] to-[#7c3aed] hover:from-[#4338ca] hover:to-[#6d28d9] text-white px-6 py-2 rounded-lg font-medium transition-all"
+                className="bg-gradient-to-r from-dgi-primary to-dgi-primary-mid hover:from-dgi-primary-mid hover:to-dgi-primary-dark text-white px-6 py-2 rounded-lg font-medium transition-all"
               >
                 Создать канал
               </button>
@@ -333,7 +333,7 @@ export default function UploadPage() {
               onDragOver={handleDrag}
               onDrop={handleDrop}
               className={`relative border-2 border-dashed rounded-xl p-12 text-center transition-colors ${
-                dragActive ? 'border-[#4f46e5] bg-[#4f46e5]/10' : 'border-[#4f46e5]/30'
+                dragActive ? 'border-dgi-primary bg-dgi-primary/10' : 'border-dgi-primary/30'
               }`}
             >
               <input
@@ -360,7 +360,7 @@ export default function UploadPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="w-16 h-16 bg-[#1a1a3e]/50 rounded-full flex items-center justify-center mx-auto">
+                  <div className="w-16 h-16 bg-dgi-surface/80 rounded-full flex items-center justify-center mx-auto">
                     <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
@@ -382,14 +382,14 @@ export default function UploadPage() {
 
             {/* Title */}
             <div>
-              <label className="block text-sm font-medium text-white mb-2">
+              <label className="block text-sm font-medium text-dgi-text mb-2">
                 Название *
               </label>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full px-4 py-3 bg-[#0a0a1a]/50 border border-[#4f46e5]/30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#4f46e5]/50 transition-all"
+                className="dgi-input"
                 placeholder="Введите название видео"
                 required
                 maxLength={100}
@@ -399,14 +399,14 @@ export default function UploadPage() {
 
             {/* Description */}
             <div>
-              <label className="block text-sm font-medium text-white mb-2">
+              <label className="block text-sm font-medium text-dgi-text mb-2">
                 Описание
               </label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={4}
-                className="w-full px-4 py-3 bg-[#0a0a1a]/50 border border-[#4f46e5]/30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#4f46e5]/50 transition-all resize-none"
+                className="dgi-input resize-none"
                 placeholder="Расскажите о содержании видео"
                 maxLength={5000}
               />
@@ -415,7 +415,7 @@ export default function UploadPage() {
 
             {/* Classification */}
             <div>
-              <label className="block text-sm font-medium text-white mb-2">
+              <label className="block text-sm font-medium text-dgi-text mb-2">
                 Уровень доступа
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -424,8 +424,8 @@ export default function UploadPage() {
                     key={option.value}
                     className={`cursor-pointer border rounded-lg p-3 transition-all ${
                       classification === option.value
-                        ? 'border-[#4f46e5] bg-[#4f46e5]/20'
-                        : 'border-[#4f46e5]/30 bg-[#0a0a1a]/50 hover:border-[#4f46e5]/50'
+                        ? 'border-dgi-primary bg-dgi-primary/20'
+                        : 'border-dgi-primary/30 bg-dgi-bg/50 hover:border-dgi-primary/50'
                     }`}
                   >
                     <div className="flex items-start gap-3">
@@ -435,7 +435,7 @@ export default function UploadPage() {
                         value={option.value}
                         checked={classification === option.value}
                         onChange={(e) => setClassification(e.target.value)}
-                        className="mt-1 w-4 h-4 text-[#4f46e5] border-gray-600 focus:ring-[#4f46e5]"
+                        className="mt-1 w-4 h-4 text-dgi-primary border-gray-600 focus:ring-dgi-primary"
                       />
                       <div>
                         <p className="text-white font-medium text-sm">{option.label}</p>
@@ -450,7 +450,7 @@ export default function UploadPage() {
             {/* User selection for restricted (personal) videos */}
             {classification === 'restricted' && (
               <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
-                <label className="block text-sm font-medium text-white mb-2">
+                <label className="block text-sm font-medium text-dgi-text mb-2">
                   Выберите пользователей, которым будет доступно видео
                 </label>
                 
@@ -461,7 +461,7 @@ export default function UploadPage() {
                     value={userSearchQuery}
                     onChange={(e) => setUserSearchQuery(e.target.value)}
                     placeholder="Введите имя или username для поиска..."
-                    className="w-full px-4 py-2 bg-[#0a0a1a]/50 border border-red-500/30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                    className="w-full px-4 py-2 bg-dgi-bg/50 border border-red-500/30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/50"
                   />
                   {isSearching && (
                     <div className="absolute right-3 top-2.5 w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
@@ -484,7 +484,7 @@ export default function UploadPage() {
 
                 {/* Search results */}
                 {searchResults.length > 0 && (
-                  <div className="bg-[#0a0a1a]/80 border border-red-500/20 rounded-lg mb-3 max-h-60 overflow-y-auto">
+                  <div className="bg-dgi-bg/80 border border-red-500/20 rounded-lg mb-3 max-h-60 overflow-y-auto">
                     {searchResults.map((user) => (
                       <button
                         key={user.id}
@@ -561,7 +561,7 @@ export default function UploadPage() {
 
             {/* Progress */}
             {isUploading && (
-              <div className="bg-[#1a1a3e]/50 backdrop-blur-sm rounded-lg p-4 border border-[#4f46e5]/30">
+              <div className="bg-dgi-surface/80 backdrop-blur-sm rounded-lg p-4 border border-dgi-primary/30">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-white text-sm">
                     {uploadProgress < 30 ? 'Подготовка...' : 
@@ -570,9 +570,9 @@ export default function UploadPage() {
                   </span>
                   <span className="text-gray-400 text-sm">{uploadProgress}%</span>
                 </div>
-                <div className="w-full h-2 bg-[#0a0a1a]/50 rounded-full overflow-hidden">
+                <div className="w-full h-2 bg-dgi-bg/50 rounded-full overflow-hidden">
                   <div 
-                    className="h-full bg-gradient-to-r from-[#4f46e5] to-[#7c3aed] transition-all duration-500"
+                    className="h-full bg-gradient-to-r from-dgi-primary to-dgi-primary-mid transition-all duration-500"
                     style={{ width: `${uploadProgress}%` }}
                   />
                 </div>
@@ -629,9 +629,9 @@ export default function UploadPage() {
 
             {/* Publishing in progress */}
             {isPublishing && (
-              <div className="bg-[#1a1a3e]/50 backdrop-blur-sm rounded-lg p-4 border border-[#4f46e5]/30">
+              <div className="bg-dgi-surface/80 backdrop-blur-sm rounded-lg p-4 border border-dgi-primary/30">
                 <div className="flex items-center gap-3">
-                  <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                  <div className="w-5 h-5 border-2 border-dgi-primary border-t-transparent rounded-full animate-spin" />
                   <span className="text-white">Начинаем обработку видео...</span>
                 </div>
               </div>
@@ -658,7 +658,7 @@ export default function UploadPage() {
                 <button
                   type="submit"
                   disabled={!file || !title || isUploading}
-                  className="flex-1 bg-gradient-to-r from-[#4f46e5] to-[#7c3aed] hover:from-[#4338ca] hover:to-[#6d28d9] disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-lg transition-all"
+                  className="flex-1 bg-gradient-to-r from-dgi-primary to-dgi-primary-mid hover:from-dgi-primary-mid hover:to-dgi-primary-dark disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-lg transition-all"
                 >
                   {isUploading ? 'Загрузка...' : 'Загрузить'}
                 </button>
@@ -666,7 +666,7 @@ export default function UploadPage() {
                   type="button"
                   onClick={() => router.push('/')}
                   disabled={isUploading}
-                  className="px-6 py-3 border border-[#4f46e5]/30 text-gray-300 hover:bg-[#1a1a3e]/50 rounded-lg transition-all disabled:opacity-50"
+                  className="px-6 py-3 border border-dgi-primary/30 text-gray-300 hover:bg-dgi-surface/80 rounded-lg transition-all disabled:opacity-50"
                 >
                   Отмена
                 </button>

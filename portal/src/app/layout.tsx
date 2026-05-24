@@ -14,7 +14,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ru">
-      <body className="font-sans antialiased">
+      <body className="dgi-theme-light font-sans antialiased">
         {children}
       </body>
     </html>

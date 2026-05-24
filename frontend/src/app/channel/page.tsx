@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import Header from '@/components/layout/Header';
@@ -48,7 +48,7 @@ export default function ChannelPage() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] to-[#1a1a3e]">
+      <div className="min-h-screen dgi-gradient-bg">
         <Header />
         <main className={`pt-14 min-h-screen flex items-center justify-center transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
           <p className="text-white">Войдите для просмотра канала</p>
@@ -59,12 +59,12 @@ export default function ChannelPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] to-[#1a1a3e]">
+      <div className="min-h-screen dgi-gradient-bg">
         <Header />
         <Sidebar />
         <main className={`pt-14 min-h-screen transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
           <div className="flex items-center justify-center py-12">
-            <div className="w-8 h-8 border-2 border-[#4f46e5] border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-2 border-dgi-primary border-t-transparent rounded-full animate-spin" />
           </div>
         </main>
       </div>
@@ -73,17 +73,17 @@ export default function ChannelPage() {
 
   if (!channel) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] to-[#1a1a3e]">
+      <div className="min-h-screen dgi-gradient-bg">
         <Header />
         <Sidebar />
         <main className={`pt-14 min-h-screen transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
           <div className="max-w-4xl mx-auto p-6">
-            <div className="bg-[#1a1a3e]/50 backdrop-blur-sm rounded-2xl p-8 border border-[#4f46e5]/30 text-center">
+            <div className="bg-dgi-surface/80 backdrop-blur-sm rounded-2xl p-8 border border-dgi-primary/30 text-center">
               <h1 className="text-2xl font-bold text-white mb-4">У вас нет канала</h1>
               <p className="text-gray-400 mb-6">Создайте канал, чтобы загружать видео</p>
               <a
                 href="/create-channel"
-                className="bg-gradient-to-r from-[#4f46e5] to-[#7c3aed] hover:from-[#4338ca] hover:to-[#6d28d9] text-white px-6 py-3 rounded-lg font-medium transition-all"
+                className="bg-gradient-to-r from-dgi-primary to-dgi-primary-mid hover:from-dgi-primary-mid hover:to-dgi-primary-dark text-white px-6 py-3 rounded-lg font-medium transition-all"
               >
                 Создать канал
               </a>
@@ -95,14 +95,14 @@ export default function ChannelPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] to-[#1a1a3e]">
+    <div className="min-h-screen dgi-gradient-bg">
       <Header />
       <Sidebar />
       <main className={`pt-14 min-h-screen transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'}`}>
         <div className="max-w-7xl mx-auto p-6">
-          <div className="bg-[#1a1a3e]/50 backdrop-blur-sm rounded-2xl p-6 border border-[#4f46e5]/30 mb-6">
+          <div className="bg-dgi-surface/80 backdrop-blur-sm rounded-2xl p-6 border border-dgi-primary/30 mb-6">
             <div className="flex items-center gap-4">
-              <div className="w-24 h-24 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-4xl flex-shrink-0 shadow-lg shadow-indigo-500/20">
+              <div className="w-24 h-24 rounded-full bg-gradient-to-br from-dgi-primary to-dgi-primary-mid flex items-center justify-center text-white font-bold text-4xl flex-shrink-0 shadow-lg shadow-[0_4px_14px_rgba(200,20,30,0.2)]">
                 {channel.name[0]?.toUpperCase() || 'C'}
               </div>
               <div>

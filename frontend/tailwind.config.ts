@@ -17,6 +17,10 @@ const config = {
       },
     },
     extend: {
+      fontFamily: {
+        heading: ['var(--dgi-font-heading)'],
+        sans: ['var(--dgi-font-body)'],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -50,6 +54,17 @@ const config = {
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
+        },
+        dgi: {
+          primary: 'rgb(var(--dgi-primary-rgb) / <alpha-value>)',
+          'primary-mid': 'rgb(var(--dgi-primary-mid-rgb) / <alpha-value>)',
+          'primary-dark': 'rgb(var(--dgi-primary-dark-rgb) / <alpha-value>)',
+          bg: 'var(--dgi-bg)',
+          surface: 'var(--dgi-surface)',
+          'surface-hover': 'var(--dgi-surface-hover)',
+          border: 'var(--dgi-border)',
+          text: 'var(--dgi-text)',
+          muted: 'var(--dgi-text-muted)',
         },
       },
       borderRadius: {

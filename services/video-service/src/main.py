@@ -232,6 +232,25 @@ async def internal_get_channel_by_owner(
     )
 
 
+@app.get("/internal/videos/{video_id}/status")
+async def internal_video_processing_status(
+    video_id: str,
+    _ok: bool = Depends(require_internal_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Статус обработки видео для streaming-service (прогресс трансляции)."""
+    video = await Video.get_by_id(db, video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    return {
+        "id": str(video.id),
+        "status": video.status,
+        "transcoding_progress": video.transcoding_progress or 0,
+        "hls_playlist_url": video.hls_playlist_url,
+        "title": video.title,
+    }
+
+
 @app.post("/internal/videos/from-recording")
 async def internal_create_video_from_recording(
     background_tasks: BackgroundTasks,
@@ -304,8 +323,8 @@ async def internal_create_video_from_recording(
 
         for raw in invited_user_ids.split(","):
             uid = raw.strip()
-            if uid:
-                await VideoUserAccess.grant_access(db, video_id, uid, user_id)
+            if uid and not await VideoUserAccess.grant_access(db, video_id, uid, user_id):
+                logger.warning("Could not grant stream archive access to user %s for video %s", uid, video_id)
 
     background_tasks.add_task(start_transcoding, video_id, minio_key)
     return {"video_id": video_id, "minio_key": minio_key, "status": "transcoding_started"}
@@ -783,30 +802,7 @@ async def get_video(
     # Type narrowing for linter
     assert video is not None
 
-    # Check if user is the owner
-    is_owner = str(video.user_id) == user_id
-
-    # Check if video is private (owner always has access)
-    if video.is_private and not is_owner:
-        if not await check_private_video_permission(user_id, str(video.user_id)):
-            raise HTTPException(status_code=403, detail="Access denied: private video")
-
-    # Check if video is restricted (owner always has access)
-    has_explicit_access = False
-    if not is_owner and video.classification == 'restricted':
-        from .database import VideoUserAccess
-        has_access = await VideoUserAccess.check_access(db, video_id, user_id)
-        logger.info(f"[Get Video] Video {video_id}: Restricted video, access check={has_access}")
-        if not has_access:
-            raise HTTPException(status_code=403, detail="Access denied: no explicit access to restricted video")
-        has_explicit_access = True
-
-    # Check classification level (owner always has access to their own videos)
-    # Skip classification check if user has explicit access to restricted video
-    if not is_owner and not has_explicit_access:
-        user_level = await get_user_classification_level(user_id)
-        if not can_access_classification(user_level, video.classification or 'public'):
-            raise HTTPException(status_code=403, detail="Access denied: insufficient classification level")
+    await enforce_video_view_access(db, video, user_id)
 
     # Get channel name and handle for single video
     owner_name = None
@@ -845,7 +841,7 @@ async def get_video(
     )
 
 async def check_private_video_permission(viewer_id: str, owner_id: str) -> bool:
-    # Check if viewer has 'view_private_videos' permission
+    """Глобальное право смотреть приватные видео (роли admin/manager)."""
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(
@@ -854,10 +850,42 @@ async def check_private_video_permission(viewer_id: str, owner_id: str) -> bool:
             )
             if response.status_code == 200:
                 permissions = response.json()
-                return "view_private_videos" in permissions
+                return "video:view_private" in permissions or "view_private_videos" in permissions
         except httpx.RequestError:
             pass
     return False
+
+
+async def user_can_view_video(db: AsyncSession, video: Video, user_id: str) -> bool:
+    """Может ли пользователь открыть видео (владелец, приглашённый, RBAC)."""
+    from .database import VideoUserAccess
+
+    if str(video.user_id) == user_id:
+        return True
+    if await VideoUserAccess.check_access(db, str(video.id), user_id):
+        return True
+    if video.classification == "restricted":
+        return False
+    if video.is_private:
+        return await check_private_video_permission(user_id, str(video.user_id))
+    user_level = await get_user_classification_level(user_id)
+    return can_access_classification(user_level, video.classification or "public")
+
+
+async def enforce_video_view_access(db: AsyncSession, video: Video, user_id: str) -> None:
+    if not await user_can_view_video(db, video, user_id):
+        from .database import VideoUserAccess
+
+        if video.classification == "restricted" and not await VideoUserAccess.check_access(
+            db, str(video.id), user_id
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied: no explicit access to restricted video",
+            )
+        if video.is_private:
+            raise HTTPException(status_code=403, detail="Access denied: private video")
+        raise HTTPException(status_code=403, detail="Access denied: insufficient classification level")
 
 # Classification levels in order of increasing sensitivity
 CLASSIFICATION_LEVELS = ['public', 'internal', 'confidential', 'restricted']
@@ -903,10 +931,7 @@ async def get_signed_url(
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
 
-    # Check permissions
-    if video.is_private and (not user_id or str(video.user_id) != user_id):
-        if not await check_private_video_permission(user_id, video.user_id):
-            raise HTTPException(status_code=403, detail="Access denied")
+    await enforce_video_view_access(db, video, user_id)
 
     try:
         signed_url = minio_client.presigned_get_object(
@@ -930,10 +955,7 @@ async def get_video_thumbnail(
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
 
-    # Check permissions for private videos
-    if video.is_private and (not user_id or str(video.user_id) != user_id):
-        if not await check_private_video_permission(user_id, video.user_id):
-            raise HTTPException(status_code=403, detail="Access denied")
+    await enforce_video_view_access(db, video, user_id)
 
     if not video.thumbnail_url:
         raise HTTPException(status_code=404, detail="Thumbnail not available")
@@ -957,28 +979,7 @@ async def get_video_playlist(
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
 
-    # Check if user is the owner
-    is_owner = user_id and str(video.user_id) == user_id
-
-    # Check permissions for private videos (owner always has access)
-    if video.is_private and not is_owner:
-        if not await check_private_video_permission(user_id, video.user_id):
-            raise HTTPException(status_code=403, detail="Access denied")
-
-    # Check classification level (owner always has access to their own videos)
-    if not is_owner:
-        # For restricted videos, check explicit access FIRST
-        if video.classification == 'restricted':
-            from .database import VideoUserAccess
-            has_access = await VideoUserAccess.check_access(db, video_id, user_id)
-            logger.info(f"[Playlist] Video {video_id}: Restricted video, access check={has_access}")
-            if not has_access:
-                raise HTTPException(status_code=403, detail="Access denied: no explicit access to restricted video")
-        else:
-            # For non-restricted videos, check classification level
-            user_level = await get_user_classification_level(user_id)
-            if not can_access_classification(user_level, video.classification or 'public'):
-                raise HTTPException(status_code=403, detail="Access denied: insufficient classification level")
+    await enforce_video_view_access(db, video, user_id)
 
     if not video.hls_playlist_url:
         raise HTTPException(status_code=404, detail="Video not ready for streaming")
@@ -1391,17 +1392,21 @@ async def get_channel_videos(
     channel = await Channel.get_by_id(db, channel_id)
     channel_name = channel.name if channel else "Неизвестный"
     is_owner = channel and str(channel.owner_id) == user_id
-    
-    # Get user's classification level
-    user_level = await get_user_classification_level(user_id)
-    
+
     videos = await Video.get_all(db, skip=skip, limit=limit, channel_id=channel_id)
     
-    # Filter videos: owner sees all, others see only videos they have access to
+    # На канале и главной — только готовые ролики (обработка идёт в фоне)
+    videos = [v for v in videos if (v.status or "") == "ready"]
+
+    # Filter videos: owner sees all ready, others — по явному доступу или классификации
     if is_owner:
         filtered_videos = videos
     else:
-        filtered_videos = [v for v in videos if can_access_classification(user_level, v.classification or 'public')]
+        allowed: List[Video] = []
+        for v in videos:
+            if await user_can_view_video(db, v, user_id):
+                allowed.append(v)
+        filtered_videos = allowed
     
     return [
         VideoResponse(

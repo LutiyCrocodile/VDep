@@ -1,51 +1,31 @@
+@import '../../../shared/branding/dgi-theme.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 210 17% 98%;
+    --foreground: 0 0% 8%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 0 0% 8%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --popover-foreground: 0 0% 8%;
+    --primary: 355 82% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 16% 93%;
+    --secondary-foreground: 0 0% 8%;
+    --muted: 210 16% 93%;
+    --muted-foreground: 208 7% 46%;
+    --accent: 355 82% 96%;
+    --accent-foreground: 355 82% 35%;
+    --destructive: 0 84% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 210 14% 89%;
+    --input: 210 14% 89%;
+    --ring: 355 82% 45%;
     --radius: 0.5rem;
-  }
-
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
   }
 }
 
@@ -54,6 +34,59 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-dgi-bg text-dgi-text font-sans antialiased;
+    font-family: var(--dgi-font-body);
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--dgi-font-heading);
+  }
+}
+
+/* Скроллбар в стиле ГКМ */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--dgi-surface-hover);
+}
+::-webkit-scrollbar-thumb {
+  background: #ced4da;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--dgi-primary);
+}
+
+@layer components {
+  .dgi-btn-primary {
+    @apply inline-flex items-center justify-center font-medium text-white transition-all duration-200 rounded-lg;
+    background: linear-gradient(135deg, var(--dgi-primary) 0%, var(--dgi-primary-mid) 100%);
+  }
+  .dgi-btn-primary:hover:not(:disabled) {
+    background: linear-gradient(135deg, var(--dgi-primary-mid) 0%, var(--dgi-primary-dark) 100%);
+    box-shadow: var(--dgi-shadow-primary);
+  }
+  .dgi-btn-primary:disabled {
+    @apply opacity-60 cursor-not-allowed;
+  }
+  .dgi-gradient-bg {
+    background: linear-gradient(165deg, var(--dgi-bg) 0%, #ffffff 55%, #fef2f2 100%);
+  }
+  .dgi-input {
+    @apply w-full px-4 py-2.5 rounded-lg border border-dgi-border bg-white text-dgi-text;
+    @apply focus:outline-none focus:border-dgi-primary focus:ring-2 focus:ring-dgi-primary/20;
+  }
+  .dgi-card {
+    @apply bg-dgi-surface rounded-xl border border-dgi-border shadow-sm;
+  }
+  .dgi-nav-active {
+    background: rgba(var(--dgi-primary-rgb), 0.15);
+    border: 1px solid rgba(var(--dgi-primary-rgb), 0.35);
+    @apply text-dgi-text;
+  }
+  .dgi-avatar {
+    background: linear-gradient(135deg, var(--dgi-primary) 0%, var(--dgi-primary-mid) 100%);
+    @apply text-white;
   }
 }
