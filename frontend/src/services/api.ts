@@ -5,6 +5,8 @@ const VIDEO_API_URL = process.env.NEXT_PUBLIC_VIDEO_API_URL || 'http://localhost
 const STREAMING_API_URL = process.env.NEXT_PUBLIC_STREAMING_API_URL || 'http://localhost:8002';
 const NOTIFICATION_API_URL =
   process.env.NEXT_PUBLIC_NOTIFICATION_API_URL || 'http://localhost:8003';
+const SEARCH_API_URL =
+  process.env.NEXT_PUBLIC_SEARCH_API_URL || 'http://localhost:8004';
 
 // Create axios instances
 const apiClient: AxiosInstance = axios.create({
@@ -39,6 +41,14 @@ const notificationApiClient: AxiosInstance = axios.create({
   timeout: 30000,
 });
 
+const searchApiClient: AxiosInstance = axios.create({
+  baseURL: SEARCH_API_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  timeout: 30000,
+});
+
 // Add auth interceptor to video client
 videoApiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
@@ -54,6 +64,19 @@ videoApiClient.interceptors.request.use(
 );
 
 notificationApiClient.interceptors.request.use(
+  (config: InternalAxiosRequestConfig) => {
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('access_token');
+      if (token && config.headers) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+searchApiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     if (typeof window !== 'undefined') {
       const token = localStorage.getItem('access_token');
@@ -444,23 +467,33 @@ export const streamsAPI = {
   },
 };
 
-// Search API
+// Search API (search-service :8004)
 export const searchAPI = {
-  search: async (query: string, filters?: { tags?: string[]; date_from?: string; date_to?: string }) => {
+  search: async (
+    query: string,
+    filters?: { tags?: string[]; skip?: number; limit?: number }
+  ): Promise<{ results: unknown[]; total: number }> => {
     const params = new URLSearchParams();
     params.append('q', query);
     if (filters?.tags) {
-      filters.tags.forEach(tag => params.append('tags', tag));
+      filters.tags.forEach((tag) => params.append('tags', tag));
     }
-    if (filters?.date_from) params.append('date_from', filters.date_from);
-    if (filters?.date_to) params.append('date_to', filters.date_to);
-    
-    const response = await apiClient.get(`/search?${params.toString()}`);
-    return response.data;
+    if (filters?.skip != null) params.append('skip', String(filters.skip));
+    if (filters?.limit != null) params.append('limit', String(filters.limit));
+
+    const response = await searchApiClient.get(`/search?${params.toString()}`);
+    const data = response.data;
+    if (Array.isArray(data)) {
+      return { results: data, total: data.length };
+    }
+    return {
+      results: data.results ?? [],
+      total: data.total ?? 0,
+    };
   },
-  
+
   getSubtitles: async (videoId: string) => {
-    const response = await apiClient.get(`/search/subtitles/${videoId}`);
+    const response = await searchApiClient.get(`/videos/${videoId}/subtitles`);
     return response.data;
   },
 };

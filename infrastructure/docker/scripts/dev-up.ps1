@@ -26,6 +26,7 @@ Write-Host "  Video UI:  http://localhost:3000"
 Write-Host "  Auth:      http://localhost:8000"
 Write-Host "  Video API: http://localhost:8001"
 Write-Host "  Stream API:http://localhost:8002"
+Write-Host "  Search API: http://localhost:8004"
 Write-Host "  MinIO:     http://localhost:9001 (console)"
 Write-Host ""
 docker compose ps

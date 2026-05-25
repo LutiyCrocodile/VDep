@@ -424,9 +424,14 @@ export default function GoLivePage() {
                   <p className="text-dgi-muted mb-2 text-sm">Полный RTMP URL:</p>
                   <code className="text-dgi-primary text-sm break-all">{fullRtmp}</code>
                 </div>
-                {currentStream.save_recording === false && (
+                {currentStream.save_recording === false ? (
                   <p className="rounded-lg px-4 py-3 text-sm border bg-amber-50 border-amber-200 text-amber-900">
                     Запись на канал после эфира не сохраняется.
+                  </p>
+                ) : (
+                  <p className="rounded-lg px-4 py-3 text-sm border bg-emerald-50 border-emerald-200 text-emerald-900">
+                    После завершения эфира запись будет сохранена на канал (обработка начнётся
+                    автоматически).
                   </p>
                 )}
                 <p

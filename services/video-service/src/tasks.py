@@ -68,6 +68,22 @@ def update_video_status(video_id, status, hls_url=None):
     finally:
         conn.close()
 
+def _index_video_for_search(video_id: str):
+    """Индексация в Elasticsearch через search-service (internal token)."""
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            r = client.post(
+                f"{settings.search_service_url}/internal/search/index/{video_id}",
+                headers={"Authorization": f"Bearer {settings.internal_auth_token}"},
+            )
+            if r.status_code != 200:
+                logger.warning("search index failed: %s %s", r.status_code, r.text)
+            else:
+                logger.info("Video %s indexed for search", video_id)
+    except Exception as e:
+        logger.warning("search index error for %s: %s", video_id, e)
+
+
 def _notify_channel_new_video(video_id: str):
     """Уведомить подписчиков канала о новом готовом видео."""
     conn = get_db_connection()
@@ -246,6 +262,7 @@ def transcode_video(self, video_id: str, minio_key: str):
             # Update database
             update_video_status(video_id, 'ready', hls_url)
             _notify_channel_new_video(video_id)
+            _index_video_for_search(video_id)
 
             logger.info(f"Transcoding completed for video {video_id}")
 

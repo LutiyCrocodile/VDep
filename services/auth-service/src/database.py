@@ -140,6 +140,21 @@ class User(Base):
         return None
 
     @classmethod
+    async def get_by_ids(cls, db: AsyncSession, user_ids: list[str]) -> list["User"]:
+        if not user_ids:
+            return []
+        unique = list({str(uid) for uid in user_ids})
+        result = await db.execute(
+            text(
+                "SELECT u.*, r.name as role_name FROM users u "
+                "LEFT JOIN roles r ON u.role_id = r.id "
+                "WHERE u.id = ANY(CAST(:uids AS uuid[]))"
+            ),
+            {"uids": unique},
+        )
+        return [cls._from_db_row(row) for row in result.fetchall()]
+
+    @classmethod
     async def get_by_username(cls, db: AsyncSession, username: str):
         result = await db.execute(text("SELECT u.*, r.name as role_name FROM users u LEFT JOIN roles r ON u.role_id = r.id WHERE u.username = :username"), {"username": username})
         row = result.first()

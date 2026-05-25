@@ -82,6 +82,21 @@ class Channel(Base):
         return None
 
     @classmethod
+    async def get_by_ids(cls, db: AsyncSession, channel_ids: list[str]) -> dict[str, "Channel"]:
+        if not channel_ids:
+            return {}
+        unique_ids = list({str(cid) for cid in channel_ids})
+        result = await db.execute(
+            text("SELECT * FROM channels WHERE id = ANY(CAST(:ids AS uuid[]))"),
+            {"ids": unique_ids},
+        )
+        out: dict[str, Channel] = {}
+        for row in result.fetchall():
+            ch = cls(**row._asdict())
+            out[str(ch.id)] = ch
+        return out
+
+    @classmethod
     async def get_by_owner(cls, db: AsyncSession, owner_id: str):
         owner_id_str = str(owner_id).strip()
         logger = logging.getLogger(__name__)
@@ -559,6 +574,43 @@ class VideoUserAccess(Base):
         )
         rows = result.fetchall()
         return [{"user_id": str(row.user_id), "granted_at": row.granted_at} for row in rows]
+
+    @classmethod
+    async def get_access_video_ids_for_user(
+        cls, db: AsyncSession, video_ids: list[str], user_id: str
+    ) -> set[str]:
+        """video_id, на которые у user_id есть явный доступ (batch)."""
+        if not video_ids:
+            return set()
+        result = await db.execute(
+            text(
+                """
+                SELECT video_id::text FROM video_user_access
+                WHERE video_id = ANY(CAST(:video_ids AS uuid[]))
+                  AND user_id = CAST(:user_id AS uuid)
+                """
+            ),
+            {"video_ids": list({str(v) for v in video_ids}), "user_id": str(user_id)},
+        )
+        return {row[0] for row in result.fetchall()}
+
+    @classmethod
+    async def get_share_counts(cls, db: AsyncSession, video_ids: list[str]) -> dict[str, int]:
+        """Число пользователей с доступом к каждому video_id (batch)."""
+        if not video_ids:
+            return {}
+        result = await db.execute(
+            text(
+                """
+                SELECT video_id::text, COUNT(*)::int AS cnt
+                FROM video_user_access
+                WHERE video_id = ANY(CAST(:video_ids AS uuid[]))
+                GROUP BY video_id
+                """
+            ),
+            {"video_ids": list({str(v) for v in video_ids})},
+        )
+        return {row[0]: row[1] for row in result.fetchall()}
 
 # Database engine
 engine = create_async_engine(

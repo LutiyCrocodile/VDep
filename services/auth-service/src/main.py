@@ -653,6 +653,33 @@ async def internal_user_contact(
     }
 
 
+class InternalContactsRequest(BaseModel):
+    user_ids: List[str]
+
+
+@app.post("/internal/users/contacts")
+async def internal_users_contacts(
+    payload: InternalContactsRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db),
+):
+    """Контакты нескольких пользователей (batch для notification-service)."""
+    if credentials.credentials != settings.internal_auth_token:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    users = await User.get_by_ids(db, payload.user_ids)
+    return {
+        "contacts": [
+            {
+                "id": str(u.id),
+                "username": u.username,
+                "email": u.email,
+                "full_name": u.full_name,
+            }
+            for u in users
+        ]
+    }
+
+
 @app.get("/internal/users/{user_id}/permissions")
 async def get_user_permissions_internal(
     user_id: str,

@@ -7,6 +7,7 @@ import Header from '@/components/layout/Header';
 import Sidebar from '@/components/layout/Sidebar';
 import VideoCard from '@/components/video/VideoCard';
 import { videosAPI, searchAPI, streamsAPI } from '@/services/api';
+import { resolveMediaUrl } from '@/lib/media-url';
 import { useAuth } from '@/services/auth';
 import { useSidebar } from '@/contexts/SidebarContext';
 
@@ -89,7 +90,26 @@ export default function Home() {
           try {
             data = await searchAPI.search(searchQuery);
             console.log('[Search] Search API response:', data);
-            setVideos(Array.isArray(data) ? data : (data.results || data.videos || []));
+            const hits = data.results || [];
+            setVideos(
+              hits.map((hit: Record<string, unknown>) => ({
+                id: String(hit.id),
+                title: String(hit.title ?? ''),
+                description: hit.description as string | undefined,
+                thumbnail_url: resolveMediaUrl(
+                  hit.thumbnail_url as string | undefined,
+                  String(hit.id)
+                ),
+                duration:
+                  typeof hit.duration === 'number'
+                    ? hit.duration
+                    : undefined,
+                views_count: Number(hit.views_count) || 0,
+                created_at: String(hit.created_at ?? ''),
+                status: (hit.status as string) || 'ready',
+                owner_username: hit.owner_username as string | undefined,
+              }))
+            );
           } catch (searchError: any) {
             console.error('[Search] Search API failed, falling back to video API:', searchError);
             // Fallback: use video API and filter client-side

@@ -155,7 +155,7 @@ class Stream(Base):
             text(
                 """
                 SELECT * FROM streams
-                WHERE end_time IS NULL AND (is_live = true OR start_time IS NOT NULL)
+                WHERE end_time IS NULL
                 """
             )
         )

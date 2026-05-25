@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     notification_service_url: str = os.getenv(
         "NOTIFICATION_SERVICE_URL", "http://notification-service:8003"
     )
+    search_service_url: str = os.getenv(
+        "SEARCH_SERVICE_URL", "http://search-service:8004"
+    )
     frontend_public_url: str = os.getenv("FRONTEND_PUBLIC_URL", "http://localhost:3000").rstrip("/")
 
     # Upload settings

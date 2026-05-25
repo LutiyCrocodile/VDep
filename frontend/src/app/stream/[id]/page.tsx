@@ -131,7 +131,8 @@ export default function LiveStreamWatchPage() {
         setUserLiked(!!s.user_liked);
         setViewersCount(s.viewers_count ?? 0);
         setHlsUrl(s.hls_url || '');
-        setIsLive(!!s.is_live);
+        const ended = Boolean(s.end_time);
+        setIsLive(!ended && (!!s.is_live || !!s.start_time));
         setStreamLoaded(true);
         setError('');
         if (s.channel_id && user?.id && s.user_id !== user.id) {

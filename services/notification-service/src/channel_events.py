@@ -1,6 +1,7 @@
 """Fan-out notifications to channel subscribers (new video, live stream)."""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Optional
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
 from .database import Notification
+from .http_client import get_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -35,22 +37,27 @@ def _internal_headers() -> dict:
 
 async def _fetch_subscriber_ids(channel_id: str) -> list[str]:
     url = f"{settings.video_service_url}/internal/channels/{channel_id}/subscriber-ids"
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        r = await client.get(url, headers=_internal_headers())
-        if r.status_code != 200:
-            logger.error("subscriber-ids %s: %s", r.status_code, r.text)
-            return []
-        data = r.json()
-        return [str(uid) for uid in data.get("subscriber_ids", [])]
+    client = get_http_client()
+    r = await client.get(url, headers=_internal_headers())
+    if r.status_code != 200:
+        logger.error("subscriber-ids %s: %s", r.status_code, r.text)
+        return []
+    return [str(uid) for uid in r.json().get("subscriber_ids", [])]
 
 
-async def _fetch_user_contact(user_id: str) -> Optional[dict]:
-    url = f"{settings.auth_service_url}/internal/users/{user_id}/contact"
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        r = await client.get(url, headers=_internal_headers())
-        if r.status_code != 200:
-            return None
-        return r.json()
+async def _fetch_contacts_bulk(user_ids: list[str]) -> dict[str, dict]:
+    if not user_ids:
+        return {}
+    url = f"{settings.auth_service_url}/internal/users/contacts"
+    client = get_http_client()
+    r = await client.post(url, json={"user_ids": user_ids}, headers=_internal_headers())
+    if r.status_code != 200:
+        logger.error("contacts bulk %s: %s", r.status_code, r.text)
+        return {}
+    out: dict[str, dict] = {}
+    for c in r.json().get("contacts", []):
+        out[str(c["id"])] = c
+    return out
 
 
 def _should_skip_stream_live(entity_id: str) -> bool:
@@ -137,19 +144,23 @@ async def dispatch_channel_event(
     }
     payload_json = json.dumps(payload, ensure_ascii=False)
 
-    created = 0
-    for user_id in recipients:
-        notification = await Notification.create(
-            db,
-            user_id=user_id,
-            type=event_type,
-            message=in_app_msg,
-            data=payload_json,
-        )
-        created += 1
+    bulk_items = [
+        {
+            "user_id": user_id,
+            "type": event_type,
+            "message": in_app_msg,
+            "data": payload_json,
+        }
+        for user_id in recipients
+    ]
+    notifications = await Notification.create_bulk(db, bulk_items)
+    contacts = await _fetch_contacts_bulk(recipients)
+
+    for notification in notifications:
+        user_id = str(notification.user_id)
         response = {
             "id": str(notification.id),
-            "user_id": str(notification.user_id),
+            "user_id": user_id,
             "type": notification.type,
             "message": notification.message,
             "data": payload,
@@ -158,10 +169,15 @@ async def dispatch_channel_event(
         }
         await push_ws(user_id, response)
 
-        contact = await _fetch_user_contact(user_id)
+    email_tasks = []
+    for user_id in recipients:
+        contact = contacts.get(user_id)
         if contact and contact.get("email"):
-            await send_email_fn(contact["email"], email_subject, email_html)
+            email_tasks.append(send_email_fn(contact["email"], email_subject, email_html))
+    if email_tasks:
+        await asyncio.gather(*email_tasks)
 
+    created = len(notifications)
     logger.info(
         "channel event %s channel=%s notified %s subscribers",
         event_type,

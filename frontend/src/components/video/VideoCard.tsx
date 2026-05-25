@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { videosAPI } from '@/services/api';
+import { resolveMediaUrl } from '@/lib/media-url';
 
 interface VideoCardProps {
   video: {
@@ -113,19 +114,9 @@ export default function VideoCard({ video }: VideoCardProps) {
     );
   };
 
-  // Construct full thumbnail URL with fallback
   const getThumbnailUrl = () => {
-    // If we have a thumbnail URL from API
-    if (video.thumbnail_url) {
-      // If it's already a full URL (presigned MinIO), use it
-      if (video.thumbnail_url.startsWith('http')) {
-        return video.thumbnail_url;
-      }
-      // Otherwise construct full URL
-      return `${process.env.NEXT_PUBLIC_VIDEO_API_URL || 'http://localhost:8001'}${video.thumbnail_url}`;
-    }
-    
-    // No thumbnail available - generate placeholder with video title
+    const resolved = resolveMediaUrl(video.thumbnail_url, video.id);
+    if (resolved) return resolved;
     const encodedTitle = video.title ? encodeURIComponent(video.title.substring(0, 15)) : 'Video';
     return `https://placehold.co/320x180/1a1a3e/FFFFFF/png?text=${encodedTitle}`;
   };

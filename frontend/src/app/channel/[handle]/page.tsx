@@ -32,6 +32,7 @@ interface Video {
   views_count?: number;
   created_at: string;
   status?: string;
+  transcoding_progress?: number;
   user_id?: string;
   owner_username?: string;
   channel_id?: string;

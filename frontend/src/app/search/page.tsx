@@ -7,6 +7,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import VideoCard from '@/components/video/VideoCard';
 import { searchAPI } from '@/services/api';
 import { useSidebar } from '@/contexts/SidebarContext';
+import { resolveMediaUrl } from '@/lib/media-url';
 
 interface Video {
   id: string;
@@ -19,6 +20,31 @@ interface Video {
   owner_username?: string;
   status?: string;
   highlights?: string[];
+}
+
+function parseDuration(value: unknown): number | undefined {
+  if (value == null) return undefined;
+  if (typeof value === 'number') return value;
+  const s = String(value);
+  if (/^\d+$/.test(s)) return parseInt(s, 10);
+  const parts = s.split(':').map(Number);
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return undefined;
+}
+
+function mapSearchHit(hit: Record<string, unknown>): Video {
+  const id = String(hit.id);
+  return {
+    id,
+    title: String(hit.title ?? ''),
+    description: hit.description as string | undefined,
+    thumbnail_url: resolveMediaUrl(hit.thumbnail_url as string | undefined, id),
+    duration: parseDuration(hit.duration),
+    views_count: Number(hit.views_count) || 0,
+    created_at: String(hit.created_at ?? new Date().toISOString()),
+    status: (hit.status as string) || 'ready',
+  };
 }
 
 export default function SearchPage() {
@@ -40,24 +66,13 @@ export default function SearchPage() {
 
       setIsLoading(true);
       try {
-        const data = await searchAPI.search(query);
-        setVideos(data.results || []);
+        const data = await searchAPI.search(query, { limit: 50 });
+        const hits = (data.results || []) as Record<string, unknown>[];
+        setVideos(hits.map(mapSearchHit));
         setTotal(data.total || 0);
       } catch {
-        // Mock data
-        setVideos([
-          {
-            id: '1',
-            title: `Результат поиска: ${query}`,
-            description: 'Найдено по запросу',
-            views_count: 1000,
-            created_at: new Date().toISOString(),
-            owner_username: 'Администратор',
-            duration: 300,
-            status: 'ready',
-          },
-        ]);
-        setTotal(1);
+        setVideos([]);
+        setTotal(0);
       } finally {
         setIsLoading(false);
       }

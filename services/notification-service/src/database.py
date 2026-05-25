@@ -23,6 +23,7 @@ class Notification(Base):
     @classmethod
     async def create(cls, db: AsyncSession, **kwargs):
         notification_id = uuid.uuid4()
+        created_at = kwargs.get("created_at", datetime.utcnow())
         await db.execute(
             text("""
                 INSERT INTO notifications (id, user_id, type, message, data, is_read, created_at)
@@ -35,11 +36,50 @@ class Notification(Base):
                 "message": kwargs['message'],
                 "data": kwargs.get('data'),
                 "is_read": kwargs.get('is_read', False),
-                "created_at": kwargs.get('created_at', datetime.utcnow())
+                "created_at": created_at,
             }
         )
         await db.commit()
         return await cls.get_by_id(db, str(notification_id))
+
+    @classmethod
+    async def create_bulk(cls, db: AsyncSession, items: list[dict]) -> list["Notification"]:
+        """Одна транзакция на пачку уведомлений (fan-out подписчикам)."""
+        if not items:
+            return []
+        now = datetime.utcnow()
+        rows: list[Notification] = []
+        for item in items:
+            notification_id = uuid.uuid4()
+            created_at = item.get("created_at", now)
+            await db.execute(
+                text("""
+                    INSERT INTO notifications (id, user_id, type, message, data, is_read, created_at)
+                    VALUES (:id, :user_id, :type, :message, :data, :is_read, :created_at)
+                """),
+                {
+                    "id": notification_id,
+                    "user_id": item["user_id"],
+                    "type": item["type"],
+                    "message": item["message"],
+                    "data": item.get("data"),
+                    "is_read": item.get("is_read", False),
+                    "created_at": created_at,
+                },
+            )
+            rows.append(
+                cls(
+                    id=notification_id,
+                    user_id=item["user_id"],
+                    type=item["type"],
+                    message=item["message"],
+                    data=item.get("data"),
+                    is_read=item.get("is_read", False),
+                    created_at=created_at,
+                )
+            )
+        await db.commit()
+        return rows
 
     @classmethod
     async def get_by_id(cls, db: AsyncSession, notification_id: str):

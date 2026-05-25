@@ -16,6 +16,7 @@ from .database import get_db, create_tables, Notification
 from .config import settings
 from .channel_events import dispatch_channel_event
 from .smtp_send import send_email_sync
+from .http_client import close_http_client, get_http_client
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -57,6 +58,7 @@ async def lifespan(app: FastAPI):
     await create_tables()
     logger.info("Notification service started")
     yield
+    await close_http_client()
     logger.info("Notification service shutting down")
 
 
@@ -72,18 +74,17 @@ app.add_middleware(
 
 
 async def get_current_user_id(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(
-                f"{settings.auth_service_url}/users/me",
-                headers={"Authorization": f"Bearer {credentials.credentials}"},
-                timeout=10.0,
-            )
-            if response.status_code == 200:
-                return response.json()["id"]
-            raise HTTPException(status_code=401, detail="Invalid token")
-        except httpx.RequestError:
-            raise HTTPException(status_code=503, detail="Auth service unavailable")
+    client = get_http_client()
+    try:
+        response = await client.get(
+            f"{settings.auth_service_url}/users/me",
+            headers={"Authorization": f"Bearer {credentials.credentials}"},
+        )
+        if response.status_code == 200:
+            return response.json()["id"]
+        raise HTTPException(status_code=401, detail="Invalid token")
+    except httpx.RequestError:
+        raise HTTPException(status_code=503, detail="Auth service unavailable")
 
 
 async def require_internal_token(
