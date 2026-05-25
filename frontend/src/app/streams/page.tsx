@@ -6,6 +6,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Link from 'next/link';
 import { streamsAPI } from '@/services/api';
 import { useSidebar } from '@/contexts/SidebarContext';
+import { withMediaCacheBust } from '@/lib/media-url';
 
 interface Stream {
   id: string;
@@ -16,6 +17,8 @@ interface Stream {
   created_at: string;
   owner_username?: string;
   viewers_count?: number;
+  thumbnail_url?: string;
+  thumbnail_cache_version?: number;
 }
 
 export default function StreamsPage() {
@@ -77,23 +80,34 @@ export default function StreamsPage() {
                   href={`/stream/${stream.id}`}
                   className="block bg-dgi-surface rounded-xl overflow-hidden border border-dgi-border hover:border-dgi-primary/30 hover:shadow-md transition-all"
                 >
-                  <div className="relative aspect-video bg-gradient-to-br from-dgi-primary/20 to-gray-100">
-                    <div className="absolute top-3 left-3 bg-dgi-primary text-white px-2 py-1 rounded-full text-xs font-bold flex items-center gap-1">
+                  <div className="relative aspect-video bg-gradient-to-br from-dgi-primary/20 to-gray-900 overflow-hidden">
+                    {stream.thumbnail_url ? (
+                      <img
+                        src={withMediaCacheBust(
+                          stream.thumbnail_url,
+                          stream.thumbnail_cache_version || stream.id
+                        )}
+                        alt=""
+                        className="absolute inset-0 w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
+                          <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                          </svg>
+                        </div>
+                      </div>
+                    )}
+                    <div className="absolute top-3 left-3 z-10 bg-dgi-primary text-white px-2 py-1 rounded-full text-xs font-bold flex items-center gap-1">
                       <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
                       LIVE
                     </div>
-                    {stream.viewers_count && (
-                      <div className="absolute bottom-3 left-3 bg-black/70 text-white px-2 py-1 rounded text-xs">
+                    {stream.viewers_count ? (
+                      <div className="absolute bottom-3 left-3 z-10 bg-black/70 text-white px-2 py-1 rounded text-xs">
                         {stream.viewers_count} зрителей
                       </div>
-                    )}
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
-                        <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-                        </svg>
-                      </div>
-                    </div>
+                    ) : null}
                   </div>
                   <div className="p-4">
                     <h3 className="text-dgi-text font-medium line-clamp-2">{stream.title}</h3>

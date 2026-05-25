@@ -40,6 +40,11 @@ from ..schemas import (
     ViewRecordRequest,
 )
 from ..storage import get_playlist_url, get_thumbnail_url, stream_media_object
+from ..thumbnail_processing import (
+    ALLOWED_CONTENT_TYPES,
+    MAX_THUMBNAIL_BYTES,
+    process_custom_thumbnail,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +187,94 @@ async def complete_upload(
     await Video.update_status(db, video_id, "uploaded")
 
     return {"message": "Upload completed, ready to publish", "status": "uploaded", "video_id": video_id}
+
+
+def _assert_owner_can_edit_thumbnail(video: Video, user_id: str) -> None:
+    if str(video.user_id) != user_id:
+        raise HTTPException(status_code=404, detail="Video not found")
+    if video.status != "uploaded":
+        raise HTTPException(
+            status_code=400,
+            detail="Превью можно изменить только до публикации видео",
+        )
+
+
+@router.post("/videos/{video_id}/thumbnail")
+async def upload_video_thumbnail(
+    video_id: str,
+    file: UploadFile = File(...),
+    user_id: str = Depends(require_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Загрузить пользовательское превью (до publish)."""
+    video = await Video.get_by_id(db, video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    _assert_owner_can_edit_thumbnail(video, user_id)
+
+    content_type = (file.content_type or "").lower()
+    if content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail="Допустимые форматы: JPEG, PNG, WebP",
+        )
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    if len(raw) > MAX_THUMBNAIL_BYTES:
+        raise HTTPException(status_code=413, detail="Максимальный размер превью: 5 МБ")
+
+    try:
+        jpeg_bytes = process_custom_thumbnail(raw)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    thumbnail_minio_key = f"{video_id}/thumbnail.jpg"
+    thumbnail_db_path = f"/{video_id}/thumbnail.jpg"
+
+    try:
+        minio_client.put_object(
+            settings.minio_bucket,
+            thumbnail_minio_key,
+            io.BytesIO(jpeg_bytes),
+            len(jpeg_bytes),
+            content_type="image/jpeg",
+        )
+        await Video.update_metadata(db, video_id, thumbnail_url=thumbnail_db_path)
+    except S3Error as e:
+        logger.error(f"MinIO thumbnail upload error: {e}")
+        raise HTTPException(status_code=500, detail="Не удалось сохранить превью") from e
+
+    return {
+        "message": "Thumbnail uploaded",
+        "thumbnail_url": get_thumbnail_url(thumbnail_db_path),
+    }
+
+
+@router.delete("/videos/{video_id}/thumbnail")
+async def delete_video_thumbnail(
+    video_id: str,
+    user_id: str = Depends(require_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Удалить пользовательское превью (до publish)."""
+    video = await Video.get_by_id(db, video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    _assert_owner_can_edit_thumbnail(video, user_id)
+
+    if not video.thumbnail_url:
+        return {"message": "No custom thumbnail"}
+
+    try:
+        minio_client.remove_object(settings.minio_bucket, f"{video_id}/thumbnail.jpg")
+    except S3Error as e:
+        logger.warning(f"MinIO thumbnail delete: {e}")
+
+    await Video.update_metadata(db, video_id, thumbnail_url=None)
+    return {"message": "Thumbnail removed"}
+
 
 @router.post("/videos/{video_id}/publish")
 async def publish_video(

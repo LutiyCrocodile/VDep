@@ -1,12 +1,32 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/layout/Header';
 import Sidebar from '@/components/layout/Sidebar';
 import { videosAPI, channelsAPI, authAPI } from '@/services/api';
 import { useAuth } from '@/services/auth-context';
 import { useSidebar } from '@/contexts/SidebarContext';
+import { resolveMediaUrl, withMediaCacheBust } from '@/lib/media-url';
+
+const uploadDraftKey = (userId: string) => `dgi_upload_draft_${userId}`;
+
+type SavedFileInfo = {
+  name: string;
+  size: number;
+  type: string;
+};
+
+type UploadDraft = {
+  videoId: string;
+  title: string;
+  description: string;
+  classification: string;
+  selectedUsers: Array<{ id: string; username: string; full_name?: string; email?: string }>;
+  fileName: string;
+  fileSize: number;
+  fileType: string;
+};
 
 export default function UploadPage() {
   const router = useRouter();
@@ -23,8 +43,20 @@ export default function UploadPage() {
   const [userChannel, setUserChannel] = useState<any>(null);
   const [loadingChannel, setLoadingChannel] = useState(true);
   const [uploadedVideoId, setUploadedVideoId] = useState<string | null>(null);
+  const [savedFileInfo, setSavedFileInfo] = useState<SavedFileInfo | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [isPublished, setIsPublished] = useState(false);
+  const [pendingThumbnail, setPendingThumbnail] = useState<File | null>(null);
+  const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
+  const [hasServerThumbnail, setHasServerThumbnail] = useState(false);
+  const [isThumbnailBusy, setIsThumbnailBusy] = useState(false);
+  const [thumbnailRevision, setThumbnailRevision] = useState(0);
+  const thumbnailInputRef = useRef<HTMLInputElement>(null);
+
+  const selectedFileDisplay: SavedFileInfo | null = file
+    ? { name: file.name, size: file.size, type: file.type }
+    : savedFileInfo;
   
   // For restricted (personal) videos - user access management
   const [selectedUsers, setSelectedUsers] = useState<Array<{id: string, username: string, full_name?: string, email?: string}>>([]);
@@ -52,19 +84,25 @@ export default function UploadPage() {
     e.stopPropagation();
     setDragActive(false);
 
+    if (uploadedVideoId) return;
+
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const droppedFile = e.dataTransfer.files[0];
       if (droppedFile.type.startsWith('video/')) {
         setFile(droppedFile);
+        setSavedFileInfo({ name: droppedFile.name, size: droppedFile.size, type: droppedFile.type });
         setTitle(droppedFile.name.replace(/\.[^/.]+$/, ''));
       }
     }
-  }, []);
+  }, [uploadedVideoId]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (uploadedVideoId) return;
+
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
       setFile(selectedFile);
+      setSavedFileInfo({ name: selectedFile.name, size: selectedFile.size, type: selectedFile.type });
       setTitle(selectedFile.name.replace(/\.[^/.]+$/, ''));
     }
   };
@@ -92,9 +130,192 @@ export default function UploadPage() {
     fetchUserChannel();
   }, [user]);
 
+  const fileMetaForDraft = (): Pick<UploadDraft, 'fileName' | 'fileSize' | 'fileType'> | null => {
+    const info = file
+      ? { name: file.name, size: file.size, type: file.type }
+      : savedFileInfo;
+    if (!info) return null;
+    return { fileName: info.name, fileSize: info.size, fileType: info.type };
+  };
+
+  const saveUploadDraft = (videoId: string) => {
+    if (!user?.id) return;
+    const fileMeta = fileMetaForDraft();
+    const draft: UploadDraft = {
+      videoId,
+      title,
+      description,
+      classification,
+      selectedUsers,
+      fileName: fileMeta?.fileName ?? title,
+      fileSize: fileMeta?.fileSize ?? 0,
+      fileType: fileMeta?.fileType ?? 'video/mp4',
+    };
+    sessionStorage.setItem(uploadDraftKey(user.id), JSON.stringify(draft));
+  };
+
+  const clearUploadDraft = () => {
+    if (!user?.id) return;
+    sessionStorage.removeItem(uploadDraftKey(user.id));
+  };
+
+  const clearThumbnailState = () => {
+    if (thumbnailPreview?.startsWith('blob:')) {
+      URL.revokeObjectURL(thumbnailPreview);
+    }
+    setPendingThumbnail(null);
+    setThumbnailPreview(null);
+    setHasServerThumbnail(false);
+    setThumbnailRevision(0);
+  };
+
+  const resetPendingUpload = () => {
+    clearUploadDraft();
+    setUploadedVideoId(null);
+    setSavedFileInfo(null);
+    setFile(null);
+    setUploadProgress(0);
+    setIsPublished(false);
+    clearThumbnailState();
+  };
+
+  useEffect(() => {
+    return () => {
+      if (thumbnailPreview?.startsWith('blob:')) {
+        URL.revokeObjectURL(thumbnailPreview);
+      }
+    };
+  }, [thumbnailPreview]);
+
+  const setThumbnailPreviewFromFile = (imageFile: File) => {
+    setThumbnailPreview((current) => {
+      if (current?.startsWith('blob:')) {
+        URL.revokeObjectURL(current);
+      }
+      return URL.createObjectURL(imageFile);
+    });
+    setPendingThumbnail(imageFile);
+    setThumbnailRevision((r) => r + 1);
+  };
+
+  const applyServerThumbnailPreview = (thumbnailUrl: string) => {
+    setThumbnailPreview((current) => {
+      if (current?.startsWith('blob:')) {
+        URL.revokeObjectURL(current);
+      }
+      return withMediaCacheBust(thumbnailUrl, Date.now());
+    });
+    setThumbnailRevision((r) => r + 1);
+  };
+
+  const uploadThumbnailToServer = async (videoId: string, imageFile: File) => {
+    setIsThumbnailBusy(true);
+    try {
+      const result = await videosAPI.uploadVideoThumbnail(videoId, imageFile);
+      setHasServerThumbnail(true);
+      setPendingThumbnail(null);
+      if (result.thumbnail_url) {
+        applyServerThumbnailPreview(result.thumbnail_url);
+      }
+    } finally {
+      setIsThumbnailBusy(false);
+    }
+  };
+
+  const handleThumbnailChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const imageFile = e.target.files?.[0];
+    e.target.value = '';
+    if (!imageFile) return;
+
+    if (!imageFile.type.startsWith('image/')) {
+      setError('Для превью выберите изображение (JPEG, PNG или WebP)');
+      return;
+    }
+    if (imageFile.size > 5 * 1024 * 1024) {
+      setError('Максимальный размер превью: 5 МБ');
+      return;
+    }
+
+    setError('');
+    setThumbnailPreviewFromFile(imageFile);
+
+    if (uploadedVideoId) {
+      try {
+        await uploadThumbnailToServer(uploadedVideoId, imageFile);
+      } catch (err: any) {
+        const detail = err.response?.data?.detail;
+        setError(typeof detail === 'string' ? detail : 'Не удалось загрузить превью');
+        clearThumbnailState();
+      }
+    }
+  };
+
+  const handleRemoveThumbnail = async () => {
+    setError('');
+    if (uploadedVideoId && hasServerThumbnail) {
+      setIsThumbnailBusy(true);
+      try {
+        await videosAPI.deleteVideoThumbnail(uploadedVideoId);
+      } catch (err: any) {
+        const detail = err.response?.data?.detail;
+        setError(typeof detail === 'string' ? detail : 'Не удалось удалить превью');
+        return;
+      } finally {
+        setIsThumbnailBusy(false);
+      }
+    }
+    clearThumbnailState();
+  };
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const raw = sessionStorage.getItem(uploadDraftKey(user.id));
+    if (!raw) return;
+
+    let draft: UploadDraft;
+    try {
+      draft = JSON.parse(raw) as UploadDraft;
+    } catch {
+      clearUploadDraft();
+      return;
+    }
+
+    videosAPI
+      .getVideo(draft.videoId)
+      .then((video) => {
+        if (video.status !== 'uploaded') {
+          clearUploadDraft();
+          return;
+        }
+        setUploadedVideoId(draft.videoId);
+        setTitle(draft.title);
+        setDescription(draft.description);
+        setClassification(draft.classification);
+        setSelectedUsers(draft.selectedUsers ?? []);
+        if (draft.fileName) {
+          setSavedFileInfo({
+            name: draft.fileName,
+            size: draft.fileSize ?? 0,
+            type: draft.fileType ?? 'video/mp4',
+          });
+        }
+        if (video.thumbnail_url) {
+          setHasServerThumbnail(true);
+          const url = resolveMediaUrl(video.thumbnail_url, draft.videoId);
+          if (url) {
+            setThumbnailRevision(1);
+            setThumbnailPreview(withMediaCacheBust(url, 1));
+          }
+        }
+      })
+      .catch(() => clearUploadDraft());
+  }, [user?.id]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file || !title) return;
+    if (uploadedVideoId) return;
 
     // Check if user has channel before uploading
     if (!userChannel) {
@@ -123,8 +344,23 @@ export default function UploadPage() {
       
       console.log('Upload successful:', result);
       
-      // Save video_id for publishing
       setUploadedVideoId(result.video_id);
+      if (file) {
+        setSavedFileInfo({ name: file.name, size: file.size, type: file.type });
+      }
+      saveUploadDraft(result.video_id);
+      if (pendingThumbnail) {
+        try {
+          await uploadThumbnailToServer(result.video_id, pendingThumbnail);
+        } catch (thumbErr: any) {
+          const detail = thumbErr.response?.data?.detail;
+          setError(
+            typeof detail === 'string'
+              ? detail
+              : 'Видео загружено, но не удалось сохранить превью. Попробуйте выбрать его снова.'
+          );
+        }
+      }
       setIsUploading(false);
     } catch (err: any) {
       console.error('Upload error:', err);
@@ -183,8 +419,12 @@ export default function UploadPage() {
       
       // Then publish the video
       await videosAPI.publishVideo(uploadedVideoId);
+      clearUploadDraft();
+      setSavedFileInfo(null);
+      setFile(null);
+      clearThumbnailState();
       setIsPublished(true);
-      
+
       // Redirect after successful publish
       setTimeout(() => {
         router.push('/');
@@ -195,6 +435,30 @@ export default function UploadPage() {
       setError(errorMessage);
     } finally {
       setIsPublishing(false);
+    }
+  };
+
+  const handleCancelPublication = async () => {
+    if (!uploadedVideoId) return;
+    if (
+      !window.confirm(
+        'Удалить видео с сервера и отменить публикацию на канал? Форму можно будет заполнить заново.'
+      )
+    ) {
+      return;
+    }
+
+    setIsCancelling(true);
+    setError('');
+    try {
+      await videosAPI.deleteVideo(uploadedVideoId);
+      resetPendingUpload();
+    } catch (err: any) {
+      console.error('Cancel upload error:', err);
+      const errorMessage = err.response?.data?.detail || 'Не удалось отменить загрузку';
+      setError(typeof errorMessage === 'string' ? errorMessage : String(errorMessage));
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -333,30 +597,41 @@ export default function UploadPage() {
               onDragOver={handleDrag}
               onDrop={handleDrop}
               className={`relative border-2 border-dashed rounded-xl p-12 text-center transition-colors ${
-                dragActive ? 'border-dgi-primary bg-dgi-primary/10' : 'border-dgi-primary/30'
-              }`}
+                dragActive && !uploadedVideoId ? 'border-dgi-primary bg-dgi-primary/10' : 'border-dgi-primary/30'
+              } ${uploadedVideoId ? 'bg-dgi-primary/5' : ''}`}
             >
               <input
                 type="file"
                 accept="video/*"
                 onChange={handleFileChange}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                disabled={!!uploadedVideoId}
+                className={`absolute inset-0 w-full h-full opacity-0 ${
+                  uploadedVideoId ? 'cursor-default pointer-events-none' : 'cursor-pointer'
+                }`}
               />
-              
-              {file ? (
+
+              {selectedFileDisplay ? (
                 <div className="space-y-2">
                   <svg className="w-12 h-12 mx-auto text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <p className="text-dgi-text font-medium">{file.name}</p>
-                  <p className="text-dgi-muted text-sm">{formatFileSize(file.size)}</p>
-                  <button
-                    type="button"
-                    onClick={() => setFile(null)}
-                    className="text-red-400 hover:text-red-300 text-sm"
-                  >
-                    Удалить
-                  </button>
+                  <p className="text-dgi-text font-medium">{selectedFileDisplay.name}</p>
+                  <p className="text-dgi-muted text-sm">{formatFileSize(selectedFileDisplay.size)}</p>
+                  {uploadedVideoId && (
+                    <p className="text-dgi-muted text-xs">Файл загружен на сервер</p>
+                  )}
+                  {!uploadedVideoId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFile(null);
+                        setSavedFileInfo(null);
+                      }}
+                      className="text-red-400 hover:text-red-300 text-sm"
+                    >
+                      Удалить
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -411,6 +686,93 @@ export default function UploadPage() {
                 maxLength={5000}
               />
               <p className="text-dgi-muted text-xs mt-1 text-right">{description.length}/5000</p>
+            </div>
+
+            {/* Custom thumbnail */}
+            <div>
+              <label className="block text-sm font-medium text-dgi-text mb-2">
+                Превью видео
+              </label>
+              <p className="text-dgi-muted text-xs mb-3">
+                Необязательно. Если не выбрать изображение, превью создастся автоматически при
+                публикации.
+              </p>
+              <div className="border border-dgi-primary/30 rounded-xl p-4 bg-dgi-bg/30">
+                <input
+                  ref={thumbnailInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={handleThumbnailChange}
+                  disabled={isThumbnailBusy || isPublishing}
+                />
+                {thumbnailPreview ? (
+                  <div className="space-y-3">
+                    <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-black shadow-inner ring-1 ring-dgi-border/60">
+                      <img
+                        key={thumbnailRevision}
+                        src={thumbnailPreview}
+                        alt="Превью видео"
+                        className="absolute inset-0 w-full h-full object-cover"
+                      />
+                      {isThumbnailBusy && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10">
+                          <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-3 justify-center">
+                      <button
+                        type="button"
+                        onClick={() => thumbnailInputRef.current?.click()}
+                        disabled={isThumbnailBusy || isPublishing}
+                        className="px-4 py-2 text-sm border border-dgi-border rounded-lg hover:bg-dgi-surface-hover text-dgi-text disabled:opacity-50"
+                      >
+                        Заменить
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRemoveThumbnail}
+                        disabled={isThumbnailBusy || isPublishing}
+                        className="px-4 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50"
+                      >
+                        Удалить
+                      </button>
+                    </div>
+                    {uploadedVideoId && hasServerThumbnail && (
+                      <p className="text-center text-dgi-muted text-xs">Превью сохранено на сервере</p>
+                    )}
+                    {!uploadedVideoId && pendingThumbnail && (
+                      <p className="text-center text-dgi-muted text-xs">
+                        Превью будет загружено вместе с видео
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => thumbnailInputRef.current?.click()}
+                    disabled={isThumbnailBusy || isPublishing}
+                    className="flex flex-col items-center justify-center w-full py-8 cursor-pointer hover:bg-dgi-surface-hover/50 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    <svg
+                      className="w-10 h-10 text-dgi-muted mb-2"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
+                    </svg>
+                    <span className="text-dgi-text text-sm font-medium">Выбрать изображение</span>
+                    <span className="text-dgi-muted text-xs mt-1">JPEG, PNG, WebP до 5 МБ</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Classification */}
@@ -594,12 +956,16 @@ export default function UploadPage() {
                   <span className="text-green-800 font-medium">Видео успешно загружено!</span>
                 </div>
                 <p className="text-dgi-muted text-sm mb-4">
-                  Видео сохранено на сервере. Нажмите кнопку ниже, чтобы начать обработку и опубликовать видео.
+                  Видео сохранено на сервере. Нажмите «Опубликовать», чтобы начать обработку и показать
+                  ролик на канале. «Позже» вернёт на главную — опубликовать можно будет снова на этой
+                  странице.
                 </p>
+                <div className="flex flex-col gap-3">
                 <div className="flex gap-3">
                   <button
+                    type="button"
                     onClick={handlePublishVideo}
-                    disabled={isPublishing}
+                    disabled={isPublishing || isCancelling}
                     className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-2"
                   >
                     {isPublishing ? (
@@ -618,11 +984,32 @@ export default function UploadPage() {
                     )}
                   </button>
                   <button
-                    onClick={() => router.push('/')}
-                    className="px-6 py-3 border border-dgi-border text-dgi-text hover:bg-dgi-surface-hover rounded-lg transition-all"
+                    type="button"
+                    onClick={() => {
+                      if (uploadedVideoId) saveUploadDraft(uploadedVideoId);
+                      router.push('/');
+                    }}
+                    disabled={isCancelling}
+                    className="px-6 py-3 border border-dgi-border text-dgi-text hover:bg-dgi-surface-hover rounded-lg transition-all disabled:opacity-50"
                   >
                     Позже
                   </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCancelPublication}
+                  disabled={isPublishing || isCancelling}
+                  className="w-full px-6 py-3 border border-red-300 text-red-700 hover:bg-red-50 rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isCancelling ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
+                      Отмена...
+                    </>
+                  ) : (
+                    'Отменить публикацию'
+                  )}
+                </button>
                 </div>
               </div>
             )}

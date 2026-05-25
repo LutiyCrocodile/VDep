@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/layout/Header';
 import Sidebar from '@/components/layout/Sidebar';
 import { streamsAPI, channelsAPI, authAPI } from '@/services/api';
 import { useAuth } from '@/services/auth-context';
 import { useSidebar } from '@/contexts/SidebarContext';
+import { withMediaCacheBust } from '@/lib/media-url';
 
 type Visibility = 'dgi_employees' | 'private';
 
@@ -44,6 +45,21 @@ const RTMP_APP = process.env.NEXT_PUBLIC_RTMP_APP || 'live';
 
 const POLL_MS = 2000;
 
+function thumbnailCacheVersion(url: string | null): number {
+  if (!url || url.startsWith('blob:')) return 0;
+  const m = url.match(/[?&]v=(\d+)/);
+  return m ? Number(m[1]) : 0;
+}
+
+function pickThumbnailCacheVersion(
+  serverVersion?: number | null,
+  fallback?: number
+): number {
+  if (serverVersion && serverVersion > 0) return serverVersion;
+  if (fallback && fallback > 0) return fallback;
+  return Date.now();
+}
+
 export default function GoLivePage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -66,6 +82,158 @@ export default function GoLivePage() {
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SelectedUser[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [pendingThumbnail, setPendingThumbnail] = useState<File | null>(null);
+  const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
+  const [hasServerThumbnail, setHasServerThumbnail] = useState(false);
+  const [isThumbnailBusy, setIsThumbnailBusy] = useState(false);
+  const [thumbnailRevision, setThumbnailRevision] = useState(0);
+  const thumbnailInputRef = useRef<HTMLInputElement>(null);
+  const pendingThumbnailRef = useRef<File | null>(null);
+  const isThumbnailBusyRef = useRef(false);
+  const thumbnailCacheVersionRef = useRef(0);
+
+  useEffect(() => {
+    pendingThumbnailRef.current = pendingThumbnail;
+  }, [pendingThumbnail]);
+
+  useEffect(() => {
+    isThumbnailBusyRef.current = isThumbnailBusy;
+  }, [isThumbnailBusy]);
+
+  const clearThumbnailState = () => {
+    if (thumbnailPreview?.startsWith('blob:')) {
+      URL.revokeObjectURL(thumbnailPreview);
+    }
+    setPendingThumbnail(null);
+    setThumbnailPreview(null);
+    setHasServerThumbnail(false);
+    setThumbnailRevision(0);
+    thumbnailCacheVersionRef.current = 0;
+  };
+
+  const applyServerThumbnail = (
+    url: string,
+    cacheVersion?: number | null,
+    revokeBlob = true
+  ) => {
+    const v = pickThumbnailCacheVersion(cacheVersion, thumbnailCacheVersionRef.current);
+    thumbnailCacheVersionRef.current = v;
+    setHasServerThumbnail(true);
+    setPendingThumbnail(null);
+    setThumbnailPreview((current) => {
+      if (revokeBlob && current?.startsWith('blob:')) {
+        URL.revokeObjectURL(current);
+      }
+      return withMediaCacheBust(url, v);
+    });
+    setThumbnailRevision((r) => r + 1);
+  };
+
+  const verifyThumbnailOnServer = async (
+    streamId: string
+  ): Promise<{ url: string; cacheVersion?: number | null } | null> => {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      if (attempt > 0) {
+        await new Promise((r) => setTimeout(r, 350 * attempt));
+      }
+      try {
+        const data = await streamsAPI.getMyActiveStream();
+        const s = data?.stream;
+        if (s?.id === streamId && s.thumbnail_url) {
+          return {
+            url: s.thumbnail_url,
+            cacheVersion: s.thumbnail_cache_version ?? null,
+          };
+        }
+      } catch {
+        /* retry */
+      }
+    }
+    return null;
+  };
+
+  const uploadThumbnailToServer = async (streamId: string, imageFile: File) => {
+    setIsThumbnailBusy(true);
+    try {
+      const result = await streamsAPI.uploadStreamThumbnail(streamId, imageFile);
+      if (result.thumbnail_url) {
+        applyServerThumbnail(
+          result.thumbnail_url,
+          result.thumbnail_cache_version ?? null
+        );
+        return;
+      }
+      const verified = await verifyThumbnailOnServer(streamId);
+      if (verified) {
+        applyServerThumbnail(verified.url, verified.cacheVersion);
+        return;
+      }
+      throw new Error('Пустой ответ сервера');
+    } catch (err: unknown) {
+      const verified = await verifyThumbnailOnServer(streamId);
+      if (verified) {
+        applyServerThumbnail(verified.url, verified.cacheVersion);
+        return;
+      }
+      throw err;
+    } finally {
+      setIsThumbnailBusy(false);
+    }
+  };
+
+  const handleThumbnailChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const imageFile = e.target.files?.[0];
+    e.target.value = '';
+    if (!imageFile) return;
+    if (!imageFile.type.startsWith('image/')) {
+      setError('Для превью выберите изображение (JPEG, PNG или WebP)');
+      return;
+    }
+    if (imageFile.size > 5 * 1024 * 1024) {
+      setError('Максимальный размер превью: 5 МБ');
+      return;
+    }
+    setError('');
+    thumbnailCacheVersionRef.current = Date.now();
+    if (thumbnailPreview?.startsWith('blob:')) {
+      URL.revokeObjectURL(thumbnailPreview);
+    }
+    setPendingThumbnail(imageFile);
+    setThumbnailRevision((r) => r + 1);
+    setThumbnailPreview(URL.createObjectURL(imageFile));
+    const targetId = currentStream?.id;
+    if (targetId) {
+      try {
+        await uploadThumbnailToServer(targetId, imageFile);
+        setError('');
+      } catch (err: unknown) {
+        const e = err as { response?: { data?: { detail?: string } } };
+        const detail = e.response?.data?.detail;
+        setError(typeof detail === 'string' ? detail : 'Не удалось загрузить превью');
+      }
+    }
+  };
+
+  const handleRemoveThumbnail = async () => {
+    const streamId = currentStream?.id;
+    const hasDbThumbnail = hasServerThumbnail || !!currentStream?.thumbnail_url;
+    if (streamId && hasDbThumbnail) {
+      setIsThumbnailBusy(true);
+      setError('');
+      try {
+        await streamsAPI.deleteStreamThumbnail(streamId);
+        thumbnailCacheVersionRef.current = 0;
+      } catch (err: unknown) {
+        const e = err as { response?: { data?: { detail?: string } } };
+        const detail = e.response?.data?.detail;
+        setError(typeof detail === 'string' ? detail : 'Не удалось удалить превью');
+        return;
+      } finally {
+        setIsThumbnailBusy(false);
+      }
+    }
+    clearThumbnailState();
+  };
 
   const loadMyStream = useCallback(async () => {
     try {
@@ -89,6 +257,51 @@ export default function GoLivePage() {
       });
       setCurrentStream(nextStream);
       setArchivingSessions(nextArchiving);
+
+      if (nextStream?.thumbnail_url) {
+        setHasServerThumbnail(true);
+        const serverVer = nextStream.thumbnail_cache_version as number | undefined;
+        if (!serverVer && !thumbnailCacheVersionRef.current) {
+          thumbnailCacheVersionRef.current = Date.now();
+        }
+        const cacheVer = pickThumbnailCacheVersion(
+          serverVer,
+          thumbnailCacheVersionRef.current
+        );
+        thumbnailCacheVersionRef.current = Math.max(
+          thumbnailCacheVersionRef.current,
+          cacheVer
+        );
+        const serverPreview = withMediaCacheBust(
+          nextStream.thumbnail_url,
+          thumbnailCacheVersionRef.current
+        );
+        setThumbnailPreview((current) => {
+          if (isThumbnailBusyRef.current) return current;
+          if (current?.startsWith('blob:')) return current;
+          if (
+            current &&
+            thumbnailCacheVersion(current) > thumbnailCacheVersion(serverPreview)
+          ) {
+            return current;
+          }
+          return serverPreview;
+        });
+        setThumbnailRevision((r) => r + 1);
+      } else if (nextStream) {
+        setHasServerThumbnail(false);
+        if (!isThumbnailBusyRef.current && !pendingThumbnailRef.current) {
+          setThumbnailPreview((current) => (current?.startsWith('blob:') ? current : null));
+          thumbnailCacheVersionRef.current = 0;
+        }
+      } else if (!pendingThumbnailRef.current) {
+        // Пока трансляция не создана — не трогать локальный выбор (poll каждые 2 с)
+        setThumbnailPreview((current) => {
+          if (current?.startsWith('blob:')) return current;
+          return null;
+        });
+        setHasServerThumbnail(false);
+      }
     } catch (err: unknown) {
       console.error('getMyActiveStream', err);
       const e = err as { response?: { data?: { detail?: string } } };
@@ -199,9 +412,31 @@ export default function GoLivePage() {
       });
       setCurrentStream(stream);
       setRtmpState('waiting_obs');
+      if (pendingThumbnail && !stream.thumbnail_url) {
+        try {
+          await uploadThumbnailToServer(stream.id, pendingThumbnail);
+          setError('');
+        } catch (thumbErr: unknown) {
+          const data = await streamsAPI.getMyActiveStream();
+          if (data?.stream?.thumbnail_url) {
+            setError('');
+          } else {
+            const te = thumbErr as { response?: { data?: { detail?: string } } };
+            const detail = te.response?.data?.detail;
+            setError(
+              typeof detail === 'string'
+                ? detail
+                : 'Трансляция создана, но превью не загрузилось. Выберите его снова.'
+            );
+          }
+        }
+      } else if (stream.thumbnail_url) {
+        setError('');
+      }
       setTitle('');
       setDescription('');
       setSelectedUsers([]);
+      setPendingThumbnail(null);
       await loadMyStream();
     } catch (err: any) {
       const errorDetail = err.response?.data?.detail || '';
@@ -218,6 +453,7 @@ export default function GoLivePage() {
       await streamsAPI.cancelPreparedStream(currentStream.id);
       setCurrentStream(null);
       setRtmpState(null);
+      clearThumbnailState();
       setError('');
       await loadMyStream();
     } catch (err: unknown) {
@@ -296,6 +532,14 @@ export default function GoLivePage() {
         className={`pt-14 min-h-screen transition-all duration-300 ease-in-out ${isCollapsed ? 'ml-0' : 'ml-64'} p-8`}
       >
         <div className="max-w-4xl mx-auto space-y-8">
+          <input
+            ref={thumbnailInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={handleThumbnailChange}
+            disabled={isThumbnailBusy || isCreating}
+          />
           <h1 className="text-4xl font-bold text-dgi-text mb-2 font-heading">Запустить трансляцию</h1>
           <p className="text-dgi-muted text-sm mb-6">
             Создайте трансляцию, подключите OBS по RTMP и завершите эфир в OBS. Запись прошлых эфиров
@@ -333,9 +577,20 @@ export default function GoLivePage() {
               {archivingSessions.map((item) => (
                 <div key={item.stream_id} className="dgi-card p-6 border-l-4 border-l-amber-500">
                   <h2 className="text-lg font-semibold text-dgi-text mb-1 font-heading">
-                    Сохранение записи (фон)
+                    Сохранение записи
                   </h2>
                   <p className="text-dgi-text mb-3">{item.title}</p>
+                  {item.phase !== 'failed' && (
+                    <div className="mb-3">
+                      <button
+                        type="button"
+                        onClick={() => handleDismissArchive(item.stream_id)}
+                        className="text-dgi-primary hover:underline text-sm"
+                      >
+                        Скрыть
+                      </button>
+                    </div>
+                  )}
                   {item.phase === 'failed' ? (
                     <>
                       <p className="text-red-700 text-sm bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">
@@ -394,6 +649,57 @@ export default function GoLivePage() {
                     <p className="text-dgi-text">{currentStream.description}</p>
                   </div>
                 )}
+                <div>
+                  <label className="block text-dgi-muted mb-2 text-sm">Превью трансляции</label>
+                  {thumbnailPreview ? (
+                    <div className="space-y-2">
+                      <div className="relative w-full max-w-md aspect-video rounded-lg overflow-hidden bg-black ring-1 ring-dgi-border/60">
+                        <img
+                          key={thumbnailRevision}
+                          src={thumbnailPreview}
+                          alt="Превью"
+                          className="absolute inset-0 w-full h-full object-cover"
+                        />
+                        {isThumbnailBusy && (
+                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10">
+                            <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => thumbnailInputRef.current?.click()}
+                          disabled={isThumbnailBusy}
+                          className="px-3 py-1.5 text-sm border border-dgi-border rounded-lg hover:bg-white disabled:opacity-50"
+                        >
+                          Заменить
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleRemoveThumbnail}
+                          disabled={isThumbnailBusy}
+                          className="px-3 py-1.5 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50"
+                        >
+                          Удалить
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => thumbnailInputRef.current?.click()}
+                      disabled={isThumbnailBusy}
+                      className="text-sm text-dgi-primary hover:underline"
+                    >
+                      Выбрать изображение (JPEG, PNG, WebP до 5 МБ)
+                    </button>
+                  )}
+                  <p className="text-dgi-muted text-xs mt-1">
+                    Показывается на странице эфира и в списке трансляций. Без превью — стандартная
+                    заставка.
+                  </p>
+                </div>
                 <div>
                   <label className="block text-dgi-muted mb-2 text-sm">RTMP сервер</label>
                   <div className="flex gap-2">
@@ -538,6 +844,44 @@ export default function GoLivePage() {
                     Приватная — выбранные пользователи
                   </label>
                 </div>
+              </div>
+              <div>
+                <label className="block text-dgi-muted mb-2 text-sm">Превью трансляции</label>
+                {thumbnailPreview ? (
+                  <div className="space-y-2 mb-2">
+                    <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black ring-1 ring-dgi-border/60">
+                      <img
+                        key={thumbnailRevision}
+                        src={thumbnailPreview}
+                        alt="Превью"
+                        className="absolute inset-0 w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => thumbnailInputRef.current?.click()}
+                        className="px-3 py-1.5 text-sm border border-dgi-border rounded-lg"
+                      >
+                        Заменить
+                      </button>
+                      <button type="button" onClick={handleRemoveThumbnail} className="px-3 py-1.5 text-sm text-red-600 border border-red-200 rounded-lg">
+                        Удалить
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => thumbnailInputRef.current?.click()}
+                    className="mb-2 text-sm text-dgi-primary hover:underline"
+                  >
+                    Выбрать изображение
+                  </button>
+                )}
+                <p className="text-dgi-muted text-xs">
+                  Необязательно. Будет загружено вместе с созданием трансляции.
+                </p>
               </div>
               {visibility === 'private' && (
                 <div className="border border-dgi-border rounded-lg p-4 bg-dgi-surface-hover">

@@ -9,6 +9,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import { streamsAPI, videosAPI, channelsAPI } from '@/services/api';
 import { useAuth } from '@/services/auth-context';
 import { useSidebar } from '@/contexts/SidebarContext';
+import { withMediaCacheBust } from '@/lib/media-url';
 
 type RelatedVideo = {
   id: string;
@@ -98,6 +99,9 @@ export default function LiveStreamWatchPage() {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [error, setError] = useState('');
   const [relatedVideos, setRelatedVideos] = useState<RelatedVideo[]>([]);
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const [thumbnailCacheBust, setThumbnailCacheBust] = useState<number>(0);
+  const [archivedVideoId, setArchivedVideoId] = useState<string | null>(null);
 
   const isOwner = Boolean(user?.id && streamOwnerId && user.id === streamOwnerId);
   const channelUrl =
@@ -131,6 +135,12 @@ export default function LiveStreamWatchPage() {
         setUserLiked(!!s.user_liked);
         setViewersCount(s.viewers_count ?? 0);
         setHlsUrl(s.hls_url || '');
+        setThumbnailUrl(s.thumbnail_url || null);
+        const cacheVer =
+          (s.thumbnail_cache_version as number | undefined) ||
+          (s.thumbnail_url ? Date.now() : 0);
+        setThumbnailCacheBust(cacheVer);
+        setArchivedVideoId(s.archived_video_id || null);
         const ended = Boolean(s.end_time);
         setIsLive(!ended && (!!s.is_live || !!s.start_time));
         setStreamLoaded(true);
@@ -304,11 +314,36 @@ export default function LiveStreamWatchPage() {
         <div className="flex gap-6 p-6">
           <div className="flex-1 max-w-5xl">
             <div className="aspect-video bg-black rounded-xl overflow-hidden border border-dgi-border shadow-md relative">
+              {thumbnailUrl && (
+                <img
+                  src={withMediaCacheBust(thumbnailUrl, thumbnailCacheBust || streamId)}
+                  alt=""
+                  className={`absolute inset-0 w-full h-full object-cover ${isLive ? 'z-0' : 'z-[1]'}`}
+                />
+              )}
               {isLive ? (
-                <video ref={videoRef} className="w-full h-full" controls playsInline />
+                <video
+                  ref={videoRef}
+                  className="relative z-[2] w-full h-full object-cover bg-black/40"
+                  controls
+                  playsInline
+                  poster={
+                    thumbnailUrl
+                      ? withMediaCacheBust(thumbnailUrl, thumbnailCacheBust || streamId)
+                      : undefined
+                  }
+                />
               ) : (
-                <div className="w-full h-full flex items-center justify-center bg-dgi-surface-hover">
-                  <p className="text-dgi-muted text-sm px-6 text-center">Эфир завершён</p>
+                <div className="absolute inset-0 z-[2] flex flex-col items-center justify-center bg-black/50 px-6 text-center">
+                  <p className="text-white text-sm font-medium mb-2">Эфир завершён</p>
+                  {archivedVideoId && (
+                    <Link
+                      href={`/watch?v=${archivedVideoId}`}
+                      className="text-dgi-primary-mid hover:underline text-sm"
+                    >
+                      Смотреть запись на канале
+                    </Link>
+                  )}
                 </div>
               )}
               <div className="absolute top-3 left-3 flex flex-wrap gap-2">

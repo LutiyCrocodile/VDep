@@ -19,6 +19,7 @@ from .database import (
 from .http_client import get_http_client
 from .presence import count_viewers
 from .schemas import StreamDetailResponse, StreamResponse
+from .storage_urls import get_public_thumbnail_url
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +35,22 @@ def build_rtmp_server_url() -> str:
     return f"rtmp://{settings.public_rtmp_host}:{settings.public_rtmp_port}/{settings.rtmp_app}"
 
 
+def stream_thumbnail_cache_version(stream: Stream) -> Optional[int]:
+    """Миллисекунды для ?v= в UI; None если превью не задано в БД."""
+    thumb_path = getattr(stream, "thumbnail_url", None)
+    if not (thumb_path or "").strip():
+        return None
+    updated = getattr(stream, "thumbnail_updated_at", None)
+    if updated is not None:
+        return int(updated.timestamp() * 1000)
+    return None
+
+
 def to_stream_response(s: Stream) -> StreamResponse:
     path = getattr(s, "mediamtx_path", None) or mediamtx_path(s.rtmp_key)
     hls = build_public_hls(path)
     vis = getattr(s, "visibility", None) or ("private" if s.is_private else "dgi_employees")
+    thumb_path = getattr(s, "thumbnail_url", None)
     return StreamResponse(
         id=str(s.id),
         title=s.title,
@@ -52,6 +65,8 @@ def to_stream_response(s: Stream) -> StreamResponse:
         save_recording=stream_saves_recording(s),
         rtmp_server_url=build_rtmp_server_url(),
         rtmp_stream_key=s.rtmp_key,
+        thumbnail_url=get_public_thumbnail_url(thumb_path, str(s.id), allow_default=False),
+        thumbnail_cache_version=stream_thumbnail_cache_version(s),
     )
 
 
@@ -97,6 +112,11 @@ async def build_stream_detail(
             "channel_id": channel_id,
             "channel_handle": channel_handle,
             "archived_video_id": str(stream.archived_video_id) if stream.archived_video_id else None,
+            "thumbnail_url": get_public_thumbnail_url(
+                getattr(stream, "thumbnail_url", None),
+                str(stream.id),
+                allow_default=True,
+            ),
         }
     )
     return StreamDetailResponse(**detail)

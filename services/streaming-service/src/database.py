@@ -40,6 +40,36 @@ class Stream(Base):
     archive_status = Column(String(32))
     archive_error = Column(String)
     save_recording = Column(Boolean, default=True, nullable=False)
+    thumbnail_url = Column(String(500))
+    thumbnail_updated_at = Column(DateTime(timezone=True))
+
+    @classmethod
+    async def update_thumbnail(cls, db: AsyncSession, stream_id: str, thumbnail_url: Optional[str]):
+        if thumbnail_url:
+            await db.execute(
+                text(
+                    """
+                    UPDATE streams
+                    SET thumbnail_url = :thumbnail_url,
+                        thumbnail_updated_at = NOW()
+                    WHERE id = CAST(:id AS uuid)
+                    """
+                ),
+                {"id": stream_id, "thumbnail_url": thumbnail_url},
+            )
+        else:
+            await db.execute(
+                text(
+                    """
+                    UPDATE streams
+                    SET thumbnail_url = NULL,
+                        thumbnail_updated_at = NULL
+                    WHERE id = CAST(:id AS uuid)
+                    """
+                ),
+                {"id": stream_id},
+            )
+        await db.commit()
 
     @classmethod
     async def create(cls, db: AsyncSession, **kwargs):
@@ -242,6 +272,22 @@ class Stream(Base):
                 SET archive_status = NULL,
                     archive_error = NULL,
                     archived_video_id = NULL
+                WHERE id = :id
+                """
+            ),
+            {"id": stream_id},
+        )
+        await db.commit()
+
+    @classmethod
+    async def dismiss_archive_ui(cls, db: AsyncSession, stream_id: str):
+        """Скрыть баннер архивации на go-live, не отвязывая запись от видео на канале."""
+        await db.execute(
+            text(
+                """
+                UPDATE streams
+                SET archive_status = 'dismissed',
+                    archive_error = NULL
                 WHERE id = :id
                 """
             ),

@@ -336,6 +336,12 @@ services:
       INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-internal-secret-token}
       NOTIFICATION_SERVICE_URL: http://notification-service:8003
       VIDEO_SERVICE_URL: http://video-service:8001
+      PUBLIC_VIDEO_API_URL: ${PUBLIC_VIDEO_API_URL:-http://localhost:8001}
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_BUCKET: videos
+      MINIO_SECURE: "false"
       FRONTEND_PUBLIC_URL: ${FRONTEND_PUBLIC_URL:-http://localhost:3000}
       REDIS_URL: redis://redis:6379/0
       PUBLIC_HLS_BASE: ${PUBLIC_HLS_BASE:-http://localhost:8888}
@@ -358,6 +364,8 @@ services:
         condition: service_healthy
       mediamtx:
         condition: service_started
+      minio:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s

@@ -176,9 +176,11 @@ async def get_channel_videos(
 
     videos = await Video.get_all(db, skip=skip, limit=limit, channel_id=channel_id)
 
+    draft_statuses = {"uploading", "uploaded"}
+
     if is_owner:
-        # Владелец видит загрузку / транскодинг с progress bar
-        filtered_videos = list(videos)
+        # Черновики (до «Опубликовать») не показываем на канале — только после публикации
+        filtered_videos = [v for v in videos if (v.status or "") not in draft_statuses]
     else:
         videos_ready = [v for v in videos if (v.status or "") == "ready"]
         allowed: List[Video] = []

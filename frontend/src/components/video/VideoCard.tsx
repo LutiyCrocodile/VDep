@@ -35,10 +35,10 @@ export default function VideoCard({ video }: VideoCardProps) {
     setLocalStatus(video.status);
   }, [video.transcoding_progress, video.status]);
   
-  // Polling for transcoding progress
+  // Polling only while transcoding (after «Опубликовать»), not for draft «uploaded»
   useEffect(() => {
-    if (localStatus !== 'transcoding' && localStatus !== 'uploaded') return;
-    
+    if (localStatus !== 'transcoding') return;
+
     const interval = setInterval(async () => {
       try {
         const updatedVideo = await videosAPI.getVideo(video.id);
@@ -96,19 +96,23 @@ export default function VideoCard({ video }: VideoCardProps) {
   };
 
   const getClassificationBadge = () => {
-    if (!video.classification || video.classification === 'public') return null;
+    // «internal» без метки — доступ и так только у авторизованных сотрудников
+    if (video.classification !== 'restricted' && video.classification !== 'confidential') {
+      return null;
+    }
 
     const badges = {
       restricted: { text: 'Личное', color: 'bg-red-600/70' },
       confidential: { text: 'Конфиденциальное', color: 'bg-yellow-600/70' },
-      internal: { text: 'Внутреннее', color: 'bg-dgi-primary/70' },
     };
 
     const badge = badges[video.classification as keyof typeof badges];
     if (!badge) return null;
 
     return (
-      <div className={`absolute top-2 left-2 ${badge.color} text-white text-xs px-2 py-1 rounded-lg font-medium opacity-80 group-hover:opacity-0 transition-opacity duration-100`}>
+      <div
+        className={`absolute top-2 left-2 z-20 ${badge.color} text-white text-xs px-2 py-1 rounded-lg font-medium backdrop-blur-sm`}
+      >
         {badge.text}
       </div>
     );
@@ -130,24 +134,24 @@ export default function VideoCard({ video }: VideoCardProps) {
         <img
           src={thumbnailUrl}
           alt={video.title || 'Video'}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           onError={() => setImageError(true)}
         />
         {video.duration && (
-          <div className="absolute bottom-2 right-2 bg-black/75 text-white text-xs px-2 py-1 rounded-lg font-medium">
+          <div className="absolute bottom-2 right-2 z-20 bg-black/75 text-white text-xs px-2 py-1 rounded-lg font-medium">
             {formatDuration(video.duration)}
           </div>
         )}
-        {(localStatus === 'uploaded' || localStatus === 'uploading') && (
-          <div className="absolute inset-0 bg-dgi-bg/80 flex items-center justify-center backdrop-blur-sm">
+        {localStatus === 'uploading' && (
+          <div className="absolute inset-0 z-30 bg-dgi-bg/80 flex items-center justify-center backdrop-blur-sm">
             <div className="flex items-center gap-2">
               <div className="w-5 h-5 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
-              <span className="text-white text-sm font-medium">Ожидание обработки...</span>
+              <span className="text-white text-sm font-medium">Загрузка файла...</span>
             </div>
           </div>
         )}
         {localStatus === 'transcoding' && (
-          <div className="absolute inset-0 bg-dgi-bg/90 flex flex-col items-center justify-center backdrop-blur-sm px-4">
+          <div className="absolute inset-0 z-30 bg-dgi-bg/90 flex flex-col items-center justify-center backdrop-blur-sm px-4">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-5 h-5 border-2 border-dgi-primary border-t-transparent rounded-full animate-spin" />
               <span className="text-white text-sm font-medium">Обработка...</span>

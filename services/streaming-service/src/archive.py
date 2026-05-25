@@ -213,10 +213,16 @@ async def build_archive_payload(stream: Stream, db: AsyncSession) -> Dict[str, A
     if not stream_saves_recording(stream):
         return {"phase": "idle", "progress": 0, "video_id": None, "error": None, "video_status": None}
 
+    refreshed = await Stream.get_by_id(db, str(stream.id))
+    if refreshed:
+        stream = refreshed
     stream = await resolve_stale_archive(stream, db)
     st = getattr(stream, "archive_status", None) or "idle"
     err = getattr(stream, "archive_error", None)
     vid = str(stream.archived_video_id) if stream.archived_video_id else None
+
+    if st == "dismissed":
+        return {"phase": "idle", "progress": 0, "video_id": vid, "error": None, "video_status": None}
 
     if not stream.end_time:
         return {"phase": "idle", "progress": 0, "video_id": None, "error": None, "video_status": None}
@@ -239,6 +245,10 @@ async def build_archive_payload(stream: Stream, db: AsyncSession) -> Dict[str, A
             status = vs.get("status") or "uploaded"
             progress = int(vs.get("transcoding_progress") or 0)
             if status == "ready":
+                if st not in ("completed", "dismissed"):
+                    await Stream.update_status(
+                        db, str(stream.id), archive_status="completed", archive_error=None
+                    )
                 return {
                     "phase": "ready",
                     "progress": 100,
@@ -272,7 +282,13 @@ async def build_archive_payload(stream: Stream, db: AsyncSession) -> Dict[str, A
     }
     if st in phase_map:
         phase, progress = phase_map[st]
-        return {"phase": phase, "progress": progress, "video_id": None, "error": None, "video_status": None}
+        return {
+            "phase": phase,
+            "progress": progress,
+            "video_id": vid,
+            "error": None,
+            "video_status": None,
+        }
 
     if stream.end_time and not vid:
         if archive_status_idle(st):
@@ -281,7 +297,7 @@ async def build_archive_payload(stream: Stream, db: AsyncSession) -> Dict[str, A
                 return {
                     "phase": "waiting_recording",
                     "progress": 10,
-                    "video_id": None,
+                    "video_id": vid,
                     "error": None,
                     "video_status": None,
                 }
@@ -397,6 +413,7 @@ async def archive_stream_task_impl(stream_id: str):
         "classification": classification,
         "is_private": str(is_restricted).lower(),
         "invited_user_ids": invited_csv,
+        "source_stream_id": stream_id,
     }
     files = {"file": ("live-recording.mp4", file_data, "video/mp4")}
 
@@ -442,15 +459,19 @@ async def archive_stream_task_impl(stream_id: str):
 
 
 async def go_live_archive_item(stream: Stream, db: AsyncSession) -> Optional[Dict[str, Any]]:
-    """Элемент списка фоновых архиваций для go-live (или None, если уже готово/не показывать)."""
+    """Элемент списка архиваций для go-live (или None, если уже готово)."""
     if stream.end_time is None:
         return None
     if not stream_saves_recording(stream):
         return None
+    fresh = await Stream.get_by_id(db, str(stream.id))
+    if fresh:
+        stream = fresh
+    if getattr(stream, "archive_status", None) == "dismissed":
+        return None
     archive = await build_archive_payload(stream, db)
     phase = archive.get("phase") or "idle"
     if phase == "ready":
-        await Stream.reset_archive(db, str(stream.id))
         return None
     if phase in ARCHIVE_BLOCKING_PHASES:
         return {

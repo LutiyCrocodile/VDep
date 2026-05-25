@@ -7,7 +7,7 @@ import Header from '@/components/layout/Header';
 import Sidebar from '@/components/layout/Sidebar';
 import VideoCard from '@/components/video/VideoCard';
 import { videosAPI, searchAPI, streamsAPI } from '@/services/api';
-import { resolveMediaUrl } from '@/lib/media-url';
+import { resolveMediaUrl, withMediaCacheBust } from '@/lib/media-url';
 import { useAuth } from '@/services/auth';
 import { useSidebar } from '@/contexts/SidebarContext';
 
@@ -38,6 +38,8 @@ interface LiveStreamCard {
   is_live: boolean;
   owner_username?: string;
   created_at?: string;
+  thumbnail_url?: string;
+  thumbnail_cache_version?: number;
 }
 
 export default function Home() {
@@ -107,6 +109,7 @@ export default function Home() {
                 views_count: Number(hit.views_count) || 0,
                 created_at: String(hit.created_at ?? ''),
                 status: (hit.status as string) || 'ready',
+                classification: hit.classification as string | undefined,
                 owner_username: hit.owner_username as string | undefined,
               }))
             );
@@ -187,12 +190,25 @@ export default function Home() {
                     <Link
                       key={s.id}
                       href={`/stream/${s.id}`}
-                      className="block rounded-xl border border-dgi-border bg-dgi-surface p-4 hover:border-dgi-primary/40 hover:shadow-md transition-all"
+                      className="block rounded-xl border border-dgi-border bg-dgi-surface overflow-hidden hover:border-dgi-primary/40 hover:shadow-md transition-all"
                     >
-                      <div className="flex items-center gap-2 text-dgi-primary text-xs font-semibold uppercase tracking-wide mb-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-dgi-primary animate-pulse" />
-                        Live
+                      <div className="relative aspect-video bg-dgi-primary/10">
+                        {s.thumbnail_url ? (
+                          <img
+                            src={withMediaCacheBust(
+                              s.thumbnail_url,
+                              s.thumbnail_cache_version || s.id
+                            )}
+                            alt=""
+                            className="absolute inset-0 w-full h-full object-cover"
+                          />
+                        ) : null}
+                        <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-dgi-primary text-white text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-full">
+                          <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                          Live
+                        </div>
                       </div>
+                      <div className="p-4">
                       <h3 className="text-dgi-text font-medium line-clamp-2">{s.title}</h3>
                       {s.owner_username && (
                         <p className="text-dgi-muted text-sm mt-2">Ведущий: {s.owner_username}</p>
@@ -200,6 +216,7 @@ export default function Home() {
                       {s.created_at && (
                         <p className="text-dgi-muted text-xs mt-2 opacity-80">{formatLiveDate(s.created_at)}</p>
                       )}
+                      </div>
                     </Link>
                   ))}
                 </div>

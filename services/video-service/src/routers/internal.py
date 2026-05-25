@@ -111,6 +111,7 @@ async def internal_create_video_from_recording(
     classification: str = Form("internal"),
     is_private: str = Form("false"),
     invited_user_ids: str = Form(""),  # comma-separated UUIDs for restricted archive
+    source_stream_id: str = Form(""),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ):
@@ -173,6 +174,24 @@ async def internal_create_video_from_recording(
             uid = raw.strip()
             if uid and not await VideoUserAccess.grant_access(db, video_id, uid, user_id):
                 logger.warning("Could not grant stream archive access to user %s for video %s", uid, video_id)
+
+    sid = source_stream_id.strip()
+    if sid:
+        src_key = f"streams/{sid}/thumbnail.jpg"
+        dst_key = f"{video_id}/thumbnail.jpg"
+        thumb_db_path = f"/{video_id}/thumbnail.jpg"
+        try:
+            from minio.commonconfig import CopySource
+
+            minio_client.copy_object(
+                settings.minio_bucket,
+                dst_key,
+                CopySource(settings.minio_bucket, src_key),
+            )
+            await Video.update_metadata(db, video_id, thumbnail_url=thumb_db_path)
+            logger.info("Copied stream %s thumbnail to video %s", sid, video_id)
+        except S3Error as e:
+            logger.warning("No stream thumbnail to copy for %s: %s", sid, e)
 
     background_tasks.add_task(start_transcoding, video_id, minio_key)
     return {"video_id": video_id, "minio_key": minio_key, "status": "transcoding_started"}

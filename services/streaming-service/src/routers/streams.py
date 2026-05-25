@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
 import uuid as uuid_lib
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from minio.error import S3Error
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,6 +40,13 @@ from ..deps import (
 from ..presence import count_viewers, leave_presence, touch_presence
 from ..rtmp import reconcile_stream_rtmp_state
 from ..schemas import StreamCreate, StreamDetailResponse, StreamResponse
+from ..config import settings
+from ..minio_client import minio_client
+from ..storage_urls import (
+    get_public_thumbnail_url,
+    stream_thumbnail_db_path,
+    stream_thumbnail_minio_key,
+)
 from ..stream_helpers import (
     build_stream_detail,
     build_public_hls,
@@ -45,12 +54,37 @@ from ..stream_helpers import (
     resolve_owner_usernames,
     stream_likes_state,
     stream_saves_recording,
+    stream_thumbnail_cache_version,
     to_stream_response,
+)
+from ..thumbnail_processing import (
+    ALLOWED_CONTENT_TYPES,
+    MAX_THUMBNAIL_BYTES,
+    process_custom_thumbnail,
 )
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _assert_owner_can_edit_stream_thumbnail(stream: Stream, user_id: str) -> None:
+    if str(stream.user_id) != user_id:
+        raise HTTPException(status_code=404, detail="Трансляция не найдена")
+    # Разрешено до завершения эфира и пока запись ещё не привязана к видео на канале
+    if stream.archived_video_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Превью нельзя изменить после сохранения записи на канал",
+        )
+
+
+def _remove_stream_thumbnail_object(stream_id: str) -> None:
+    try:
+        minio_client.remove_object(settings.minio_bucket, stream_thumbnail_minio_key(stream_id))
+    except S3Error:
+        pass
+
 
 @router.get("/streams/live")
 async def get_live_streams_public_filtered(
@@ -83,6 +117,10 @@ async def get_live_streams_public_filtered(
                 "viewers_count": count_viewers(sid),
                 "likes_count": likes_count,
                 "visibility": r.visibility,
+                "thumbnail_url": get_public_thumbnail_url(
+                    getattr(s, "thumbnail_url", None), sid, allow_default=True
+                ),
+                "thumbnail_cache_version": stream_thumbnail_cache_version(s),
             }
         )
     return {"streams": items}
@@ -183,8 +221,8 @@ async def dismiss_stream_archive(
     stream = await Stream.get_by_id(db, stream_id)
     if not stream or str(stream.user_id) != user_id:
         raise HTTPException(status_code=404, detail="Трансляция не найдена")
-    await Stream.reset_archive(db, stream_id)
-    return {"message": "Состояние архивации сброшено", "archive": {"phase": "idle", "progress": 0, "video_id": None}}
+    await Stream.dismiss_archive_ui(db, stream_id)
+    return {"message": "Блок архивации скрыт", "archive": {"phase": "idle", "progress": 0, "video_id": None}}
 
 
 @router.post("/streams/{stream_id}/archive/retry")
@@ -237,6 +275,75 @@ async def get_stream(
         stream = await reconcile_stream_rtmp_state(db, stream)
         stream = await Stream.get_by_id(db, stream_id) or stream
     return await build_stream_detail(db, stream, profile)
+
+
+@router.post("/streams/{stream_id}/thumbnail")
+async def upload_stream_thumbnail(
+    stream_id: str,
+    file: UploadFile = File(...),
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Превью до/во время подготовки эфира (пока трансляция не завершена)."""
+    stream = await Stream.get_by_id(db, stream_id)
+    if not stream:
+        raise HTTPException(status_code=404, detail="Трансляция не найдена")
+    _assert_owner_can_edit_stream_thumbnail(stream, user_id)
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    if len(raw) > MAX_THUMBNAIL_BYTES:
+        raise HTTPException(status_code=413, detail="Максимальный размер превью: 5 МБ")
+
+    content_type = (file.content_type or "").lower()
+    if content_type and content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail="Допустимые форматы: JPEG, PNG, WebP")
+
+    try:
+        jpeg_bytes = process_custom_thumbnail(raw)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    minio_key = stream_thumbnail_minio_key(stream_id)
+    db_path = stream_thumbnail_db_path(stream_id)
+    try:
+        minio_client.put_object(
+            settings.minio_bucket,
+            minio_key,
+            io.BytesIO(jpeg_bytes),
+            len(jpeg_bytes),
+            content_type="image/jpeg",
+        )
+        await Stream.update_thumbnail(db, stream_id, db_path)
+    except S3Error as e:
+        logger.error("Stream thumbnail upload error: %s", e)
+        raise HTTPException(status_code=500, detail="Не удалось сохранить превью") from e
+
+    stream = await Stream.get_by_id(db, stream_id) or stream
+    public_url = get_public_thumbnail_url(db_path, stream_id)
+    cache_version = stream_thumbnail_cache_version(stream)
+    return {
+        "message": "Thumbnail uploaded",
+        "thumbnail_url": public_url,
+        "thumbnail_cache_version": cache_version,
+    }
+
+
+@router.delete("/streams/{stream_id}/thumbnail")
+async def delete_stream_thumbnail(
+    stream_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    stream = await Stream.get_by_id(db, stream_id)
+    if not stream:
+        raise HTTPException(status_code=404, detail="Трансляция не найдена")
+    _assert_owner_can_edit_stream_thumbnail(stream, user_id)
+
+    _remove_stream_thumbnail_object(stream_id)
+    await Stream.update_thumbnail(db, stream_id, None)
+    return {"message": "Thumbnail removed"}
 
 
 @router.post("/streams/{stream_id}/presence")
@@ -349,6 +456,8 @@ async def cancel_prepared_stream(
     if stream.end_time is not None:
         raise HTTPException(status_code=400, detail="Трансляция уже завершена")
 
+    _remove_stream_thumbnail_object(stream_id)
+    await Stream.update_thumbnail(db, stream_id, None)
     await Stream.update_status(db, stream_id, is_live=False, end_time=datetime.utcnow())
     return {"message": "Подготовка отменена"}
 

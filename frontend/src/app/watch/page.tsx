@@ -524,7 +524,7 @@ export default function WatchPage() {
 
               <video
                 ref={videoRef}
-                className={`w-full h-full ${playerReady ? 'opacity-100' : 'opacity-30'}`}
+                className={`w-full h-full object-cover ${playerReady ? 'opacity-100' : 'opacity-30'}`}
                 poster={video.thumbnail_url || `https://via.placeholder.com/1280x720/1a1a3e/FFFFFF?text=${encodeURIComponent(video.title)}`}
                 onClick={() => {
                   // Direct pause/play on video click

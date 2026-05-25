@@ -19,6 +19,15 @@ docker compose --env-file .env up -d `
   auth-service video-service streaming-service notification-service search-service `
   celery-worker frontend portal
 
+# Миграции превью трансляций (идемпотентные)
+foreach ($m in @("019_stream_thumbnail.sql", "020_stream_thumbnail_updated.sql")) {
+  try {
+    & (Join-Path $PSScriptRoot "dev-apply-migration.ps1") -MigrationFile $m
+  } catch {
+    Write-Warning "Migration $m skipped (is db up?): $_"
+  }
+}
+
 Write-Host ""
 Write-Host "Dev URLs:"
 Write-Host "  Portal:    http://localhost:3002"

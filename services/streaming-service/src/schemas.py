@@ -30,6 +30,8 @@ class StreamResponse(BaseModel):
     rtmp_stream_key: str
     owner_username: Optional[str] = None
     created_at: Optional[datetime] = None
+    thumbnail_url: Optional[str] = None
+    thumbnail_cache_version: Optional[int] = None
 
 
 class StreamDetailResponse(StreamResponse):

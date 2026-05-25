@@ -18,7 +18,8 @@ redis = "^5.0.1"
 pg8000 = "^1.30.0"  # Pure Python PostgreSQL driver for Celery
 python-multipart = "^0.0.17"
 httpx = "^0.25.2"  # For API calls to auth service
-opencv-python = "^4.8.1.78"  # For watermarking
+pillow = "^10.4.0"  # Custom thumbnail resize (API container)
+opencv-python = "^4.8.1.78"  # Celery worker / watermarking
 moviepy = "^1.0.3"  # For video processing
 
 [tool.poetry.group.dev.dependencies]

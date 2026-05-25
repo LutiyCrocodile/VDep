@@ -172,12 +172,25 @@ def transcode_video(self, video_id: str, minio_key: str):
             metadata = get_video_metadata(local_video_path)
             logger.info(f"Video metadata: {metadata}")
 
-            # Generate thumbnail
-            thumbnail_path = os.path.join(temp_dir, "thumbnail.jpg")
             thumbnail_minio_key = f"{video_id}/thumbnail.jpg"
-            generate_thumbnail(local_video_path, thumbnail_path)
-            minio_client.fput_object(settings.minio_bucket, thumbnail_minio_key, thumbnail_path)
-            logger.info(f"Thumbnail uploaded to {thumbnail_minio_key}")
+            thumbnail_db_path = f"/{video_id}/thumbnail.jpg"
+            has_custom_thumbnail = False
+            try:
+                minio_client.stat_object(settings.minio_bucket, thumbnail_minio_key)
+                has_custom_thumbnail = True
+                logger.info(f"Using custom thumbnail for video {video_id}")
+            except S3Error:
+                pass
+
+            if not has_custom_thumbnail:
+                thumbnail_path = os.path.join(temp_dir, "thumbnail.jpg")
+                generate_thumbnail(local_video_path, thumbnail_path)
+                minio_client.fput_object(
+                    settings.minio_bucket,
+                    thumbnail_minio_key,
+                    thumbnail_path,
+                )
+                logger.info(f"Auto thumbnail uploaded to {thumbnail_minio_key}")
 
             # Update database with metadata
             update_video_metadata(
@@ -185,7 +198,7 @@ def transcode_video(self, video_id: str, minio_key: str):
                 metadata.get('duration'),
                 metadata.get('resolution'),
                 metadata.get('bitrate'),
-                f"/{video_id}/thumbnail.jpg"
+                thumbnail_db_path,
             )
 
             # Create HLS directory

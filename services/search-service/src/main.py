@@ -41,6 +41,7 @@ class VideoSearchResult(BaseModel):
     created_at: str
     user_id: str
     views_count: int = 0
+    classification: str = "public"
     relevance_score: float = 0.0
     highlights: Optional[dict] = None
 
@@ -94,7 +95,7 @@ async def _fetch_video_row(db: AsyncSession, video_id: str):
             """
             SELECT id, title, description, duration, resolution, file_size, status,
                    hls_playlist_url, thumbnail_url, is_private, tags, user_id,
-                   created_at, views_count
+                   created_at, views_count, classification
             FROM videos WHERE id = :id
             """
         ),
@@ -143,6 +144,7 @@ async def _index_video_document(db: AsyncSession, video_id: str) -> None:
         "user_id": str(row.user_id),
         "created_at": str(row.created_at),
         "views_count": row.views_count or 0,
+        "classification": row.classification or "public",
     }
 
     await es_client.index(index=settings.elasticsearch_index, id=video_id, document=doc)
@@ -303,6 +305,7 @@ async def search_videos(
                     created_at=source["created_at"],
                     user_id=source["user_id"],
                     views_count=source.get("views_count", 0),
+                    classification=source.get("classification", "public"),
                     relevance_score=hit["_score"],
                     highlights=highlights,
                 )

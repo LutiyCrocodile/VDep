@@ -14,8 +14,16 @@ class Settings(BaseSettings):
     notification_service_url: str = os.getenv("NOTIFICATION_SERVICE_URL", "http://notification-service:8003")
     frontend_public_url: str = os.getenv("FRONTEND_PUBLIC_URL", "http://localhost:3000").rstrip("/")
 
-    # Video service (channel check + archive upload)
+    # Video service (channel check + archive upload + /media URLs)
     video_service_url: str = os.getenv("VIDEO_SERVICE_URL", "http://video-service:8001")
+    public_video_api_url: str = os.getenv("PUBLIC_VIDEO_API_URL", "http://localhost:8001")
+
+    # MinIO (превью трансляций в том же bucket, что и видео)
+    minio_endpoint: str = os.getenv("MINIO_ENDPOINT", "minio:9000")
+    minio_access_key: str = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+    minio_secret_key: str = os.getenv("MINIO_SECRET_KEY", "minioadmin")
+    minio_bucket: str = os.getenv("MINIO_BUCKET", "videos")
+    minio_secure: bool = os.getenv("MINIO_SECURE", "false").lower() == "true"
 
     # RTMP / HLS (MediaMTX)
     public_rtmp_host: str = os.getenv("PUBLIC_RTMP_HOST", "localhost")

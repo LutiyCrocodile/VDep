@@ -92,6 +92,14 @@ searchApiClient.interceptors.request.use(
 // Add auth interceptor to streaming client
 streamingApiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    // FormData: убрать application/json с инстанса — иначе FastAPI не видит file (422)
+    if (config.data instanceof FormData && config.headers) {
+      if (typeof config.headers.delete === 'function') {
+        config.headers.delete('Content-Type');
+      } else {
+        delete config.headers['Content-Type'];
+      }
+    }
     if (typeof window !== 'undefined') {
       const token = localStorage.getItem('access_token');
       if (token && config.headers) {
@@ -296,6 +304,21 @@ export const videosAPI = {
     return response.data;
   },
 
+  uploadVideoThumbnail: async (videoId: string, imageFile: File) => {
+    const formData = new FormData();
+    formData.append('file', imageFile);
+    const response = await videoApiClient.post(`/videos/${videoId}/thumbnail`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 60000,
+    });
+    return response.data;
+  },
+
+  deleteVideoThumbnail: async (videoId: string) => {
+    const response = await videoApiClient.delete(`/videos/${videoId}/thumbnail`);
+    return response.data;
+  },
+
   // Personal video access management
   grantVideoAccess: async (videoId: string, targetUserId: string) => {
     const response = await videoApiClient.post(`/videos/${videoId}/access?target_user_id=${targetUserId}`);
@@ -457,6 +480,20 @@ export const streamsAPI = {
 
   cancelPreparedStream: async (streamId: string) => {
     const response = await streamingApiClient.post(`/streams/${streamId}/cancel`);
+    return response.data;
+  },
+
+  uploadStreamThumbnail: async (streamId: string, imageFile: File) => {
+    const formData = new FormData();
+    formData.append('file', imageFile, imageFile.name || 'thumbnail.jpg');
+    const response = await streamingApiClient.post(`/streams/${streamId}/thumbnail`, formData, {
+      timeout: 60000,
+    });
+    return response.data;
+  },
+
+  deleteStreamThumbnail: async (streamId: string) => {
+    const response = await streamingApiClient.delete(`/streams/${streamId}/thumbnail`);
     return response.data;
   },
 

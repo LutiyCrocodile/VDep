@@ -483,7 +483,17 @@ class Video(Base):
         update_fields = []
         params = {"id": video_id}
 
-        for field in ['duration', 'resolution', 'bitrate', 'hls_playlist_url', 'status', 'channel_id', 'transcoding_progress', 'classification_id']:
+        for field in [
+            'duration',
+            'resolution',
+            'bitrate',
+            'hls_playlist_url',
+            'thumbnail_url',
+            'status',
+            'channel_id',
+            'transcoding_progress',
+            'classification_id',
+        ]:
             if field in kwargs:
                 update_fields.append(f"{field} = :{field}")
                 params[field] = kwargs[field]

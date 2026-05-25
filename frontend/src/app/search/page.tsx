@@ -19,6 +19,7 @@ interface Video {
   created_at: string;
   owner_username?: string;
   status?: string;
+  classification?: string;
   highlights?: string[];
 }
 
@@ -44,6 +45,7 @@ function mapSearchHit(hit: Record<string, unknown>): Video {
     views_count: Number(hit.views_count) || 0,
     created_at: String(hit.created_at ?? new Date().toISOString()),
     status: (hit.status as string) || 'ready',
+    classification: hit.classification as string | undefined,
   };
 }
 
