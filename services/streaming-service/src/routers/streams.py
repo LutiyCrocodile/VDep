@@ -25,8 +25,10 @@ from ..database import (
     Stream,
     add_stream_like,
     get_db,
+    record_stream_viewer,
     remove_stream_like,
     replace_stream_viewers,
+    update_stream_peak_viewers,
     user_liked_stream,
     user_liked_video,
 )
@@ -121,6 +123,11 @@ async def get_live_streams_public_filtered(
                     getattr(s, "thumbnail_url", None), sid, allow_default=True
                 ),
                 "thumbnail_cache_version": stream_thumbnail_cache_version(s),
+                "views_count": int(getattr(s, "views_count", None) or 0),
+                "peak_viewers": max(
+                    int(getattr(s, "peak_viewers", None) or 0),
+                    count_viewers(sid),
+                ),
             }
         )
     return {"streams": items}
@@ -353,8 +360,13 @@ async def stream_presence_heartbeat(
     db: AsyncSession = Depends(get_db),
 ):
     stream = await require_stream_view_access(db, stream_id, profile)
-    touch_presence(str(stream.id), str(profile["id"]))
-    return {"viewers_count": count_viewers(str(stream.id))}
+    sid = str(stream.id)
+    uid = str(profile["id"])
+    touch_presence(sid, uid)
+    await record_stream_viewer(db, sid, uid)
+    current = count_viewers(sid)
+    await update_stream_peak_viewers(db, sid, current)
+    return {"viewers_count": current}
 
 
 @router.post("/streams/{stream_id}/presence/leave")

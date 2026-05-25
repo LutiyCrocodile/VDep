@@ -17,6 +17,7 @@ type RelatedVideo = {
   thumbnail_url?: string;
   duration?: number;
   views_count?: number;
+  peak_viewers?: number;
   owner_username?: string;
 };
 
@@ -96,6 +97,8 @@ export default function LiveStreamWatchPage() {
   const [likesCount, setLikesCount] = useState(0);
   const [userLiked, setUserLiked] = useState(false);
   const [viewersCount, setViewersCount] = useState(0);
+  const [streamViewsCount, setStreamViewsCount] = useState(0);
+  const [peakViewers, setPeakViewers] = useState(0);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [error, setError] = useState('');
   const [relatedVideos, setRelatedVideos] = useState<RelatedVideo[]>([]);
@@ -134,6 +137,8 @@ export default function LiveStreamWatchPage() {
         setLikesCount(s.likes_count ?? 0);
         setUserLiked(!!s.user_liked);
         setViewersCount(s.viewers_count ?? 0);
+        setStreamViewsCount(s.views_count ?? 0);
+        setPeakViewers(s.peak_viewers ?? s.viewers_count ?? 0);
         setHlsUrl(s.hls_url || '');
         setThumbnailUrl(s.thumbnail_url || null);
         const cacheVer =
@@ -185,14 +190,16 @@ export default function LiveStreamWatchPage() {
     const heartbeat = async () => {
       try {
         const data = await streamsAPI.sendPresence(streamId);
-        if (!cancelled) setViewersCount(data.viewers_count ?? 0);
+        if (!cancelled) {
+          setViewersCount(data.viewers_count ?? 0);
+        }
       } catch {
         /* ignore */
       }
     };
 
     heartbeat();
-    const interval = setInterval(heartbeat, 20000);
+    const interval = setInterval(heartbeat, 10000);
 
     return () => {
       cancelled = true;
@@ -405,11 +412,9 @@ export default function LiveStreamWatchPage() {
                         <p className="text-dgi-text font-semibold">{ownerUsername || 'Ведущий'}</p>
                       )}
                       <p className="text-dgi-muted text-sm">
-                        {isLive
-                          ? `${formatViews(viewersCount)} зрителей сейчас`
-                          : viewersCount > 0
-                            ? `Пик зрителей: ${formatViews(viewersCount)}`
-                            : '0 зрителей'}
+                        {formatViews(streamViewsCount)} просмотров
+                        {isLive ? ` • ${formatViews(viewersCount)} сейчас` : ''}
+                        {peakViewers > 0 ? ` • пик ${formatViews(peakViewers)}` : ''}
                         {' • '}
                         {formatViews(likesCount)} лайков
                         {createdAt ? ` • ${formatDate(createdAt)}` : ''}

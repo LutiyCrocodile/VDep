@@ -20,7 +20,7 @@ docker compose --env-file .env up -d `
   celery-worker frontend portal
 
 # Миграции превью трансляций (идемпотентные)
-foreach ($m in @("019_stream_thumbnail.sql", "020_stream_thumbnail_updated.sql")) {
+foreach ($m in @("019_stream_thumbnail.sql", "020_stream_thumbnail_updated.sql", "021_views_count_fix_and_stream_views.sql")) {
   try {
     & (Join-Path $PSScriptRoot "dev-apply-migration.ps1") -MigrationFile $m
   } catch {

@@ -33,6 +33,10 @@ export default function Header() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    if (searchQuery.trim() && !isAuthenticated) {
+      router.push(`/login?next=${encodeURIComponent(`/?q=${encodeURIComponent(searchQuery.trim())}`)}`);
+      return;
+    }
     if (searchQuery.trim()) {
       router.push(`/?q=${encodeURIComponent(searchQuery)}`);
     } else {

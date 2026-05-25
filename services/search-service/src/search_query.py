@@ -29,20 +29,20 @@ def build_search_query(
     if tags:
         filters.append({"terms": {"tags": [t.strip() for t in tags.split(",") if t.strip()]}})
 
-    if user_id:
-        filters.append(
-            {
-                "bool": {
-                    "should": [
-                        {"term": {"is_private": False}},
-                        {"term": {"user_id.keyword": user_id}},
-                    ],
-                    "minimum_should_match": 1,
-                }
+    if not user_id:
+        return {"bool": {"filter": filters, "must_not": [{"match_all": {}}]}}
+
+    filters.append(
+        {
+            "bool": {
+                "should": [
+                    {"term": {"is_private": False}},
+                    {"term": {"user_id.keyword": user_id}},
+                ],
+                "minimum_should_match": 1,
             }
-        )
-    else:
-        filters.append({"term": {"is_private": False}})
+        }
+    )
 
     should: List[Dict[str, Any]] = [
         {

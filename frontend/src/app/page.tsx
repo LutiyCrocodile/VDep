@@ -40,6 +40,7 @@ interface LiveStreamCard {
   created_at?: string;
   thumbnail_url?: string;
   thumbnail_cache_version?: number;
+  views_count?: number;
 }
 
 export default function Home() {
@@ -85,6 +86,11 @@ export default function Home() {
       setIsLoading(true);
       setError('');
       try {
+        if (searchQuery.trim() && !isAuthenticated) {
+          setVideos([]);
+          setError('');
+          return;
+        }
         let data;
         if (searchQuery.trim()) {
           console.log('[Search] Using search API with query:', searchQuery);
@@ -114,21 +120,21 @@ export default function Home() {
               }))
             );
           } catch (searchError: any) {
-            console.error('[Search] Search API failed, falling back to video API:', searchError);
-            // Fallback: use video API and filter client-side
-            data = await videosAPI.getVideos(0, 100);
-            const allVideos = Array.isArray(data) ? data : (data.videos || []);
-            const filtered = allVideos.filter((v: Video) =>
-              v.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-              (v.description && v.description.toLowerCase().includes(searchQuery.toLowerCase()))
-            );
-            setVideos(filtered);
+            console.error('[Search] Search API failed:', searchError);
+            const status = searchError?.response?.status;
+            if (status === 401) {
+              setError('Войдите в систему, чтобы искать видео');
+            } else {
+              setError('Не удалось выполнить поиск');
+            }
+            setVideos([]);
           }
-        } else {
+        } else if (isAuthenticated) {
           console.log('[Search] Using regular videos API (no search query)');
-          // Use regular videos API
           data = await videosAPI.getVideos(0, 24);
           setVideos(Array.isArray(data) ? data : (data.videos || []));
+        } else {
+          setVideos([]);
         }
       } catch (err: any) {
         console.error('[Search] Error fetching videos:', err);
@@ -141,8 +147,9 @@ export default function Home() {
       }
     };
 
+    if (authLoading) return;
     fetchVideos();
-  }, [searchQuery]);
+  }, [searchQuery, isAuthenticated, authLoading]);
 
   // Filter videos - only ready videos on home page, then by classification
   useEffect(() => {
@@ -271,10 +278,23 @@ export default function Home() {
                   Результаты поиска: "{searchQuery}"
                 </h2>
               )}
-              {filteredVideos.length === 0 ? (
+              {searchQuery && !isAuthenticated ? (
                 <div className="text-center py-12">
                   <p className="text-dgi-muted text-lg">
-                    {searchQuery ? 'По вашему запросу ничего не найдено' : 'Нет доступных видео'}
+                    <Link href="/login" className="text-dgi-primary hover:underline">
+                      Войдите
+                    </Link>
+                    , чтобы искать видео
+                  </p>
+                </div>
+              ) : filteredVideos.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-dgi-muted text-lg">
+                    {searchQuery
+                      ? 'По вашему запросу ничего не найдено'
+                      : isAuthenticated
+                        ? 'Нет доступных видео'
+                        : 'Войдите, чтобы видеть видео'}
                   </p>
                 </div>
               ) : (

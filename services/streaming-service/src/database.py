@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, UUID, text
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, UUID, Integer, text
 from typing import AsyncGenerator, List, Optional
 import uuid
 from datetime import datetime
@@ -42,6 +42,8 @@ class Stream(Base):
     save_recording = Column(Boolean, default=True, nullable=False)
     thumbnail_url = Column(String(500))
     thumbnail_updated_at = Column(DateTime(timezone=True))
+    views_count = Column(Integer, default=0)
+    peak_viewers = Column(Integer, default=0)
 
     @classmethod
     async def update_thumbnail(cls, db: AsyncSession, stream_id: str, thumbnail_url: Optional[str]):
@@ -345,6 +347,51 @@ async def is_stream_viewer(db: AsyncSession, stream_id: str, user_id: str) -> bo
         {"sid": stream_id, "uid": user_id},
     )
     return result.first() is not None
+
+
+async def record_stream_viewer(db: AsyncSession, stream_id: str, user_id: str) -> bool:
+    """Уникальный просмотр эфира; True если зритель учтён впервые."""
+    result = await db.execute(
+        text(
+            """
+            INSERT INTO stream_views (stream_id, user_id, viewed_at)
+            VALUES (CAST(:sid AS uuid), CAST(:uid AS uuid), NOW())
+            ON CONFLICT (stream_id, user_id) DO NOTHING
+            RETURNING stream_id
+            """
+        ),
+        {"sid": stream_id, "uid": user_id},
+    )
+    if not result.first():
+        return False
+    await db.execute(
+        text(
+            """
+            UPDATE streams
+            SET views_count = COALESCE(views_count, 0) + 1
+            WHERE id = CAST(:sid AS uuid)
+            """
+        ),
+        {"sid": stream_id},
+    )
+    await db.commit()
+    return True
+
+
+async def update_stream_peak_viewers(db: AsyncSession, stream_id: str, current: int) -> None:
+    if current < 1:
+        return
+    await db.execute(
+        text(
+            """
+            UPDATE streams
+            SET peak_viewers = GREATEST(COALESCE(peak_viewers, 0), :current)
+            WHERE id = CAST(:sid AS uuid)
+            """
+        ),
+        {"sid": stream_id, "current": current},
+    )
+    await db.commit()
 
 
 async def list_stream_viewer_ids(db: AsyncSession, stream_id: str) -> List[str]:

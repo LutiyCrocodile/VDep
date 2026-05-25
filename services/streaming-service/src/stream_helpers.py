@@ -51,6 +51,8 @@ def to_stream_response(s: Stream) -> StreamResponse:
     hls = build_public_hls(path)
     vis = getattr(s, "visibility", None) or ("private" if s.is_private else "dgi_employees")
     thumb_path = getattr(s, "thumbnail_url", None)
+    views_count = int(getattr(s, "views_count", None) or 0)
+    peak_viewers = int(getattr(s, "peak_viewers", None) or 0)
     return StreamResponse(
         id=str(s.id),
         title=s.title,
@@ -67,6 +69,8 @@ def to_stream_response(s: Stream) -> StreamResponse:
         rtmp_stream_key=s.rtmp_key,
         thumbnail_url=get_public_thumbnail_url(thumb_path, str(s.id), allow_default=False),
         thumbnail_cache_version=stream_thumbnail_cache_version(s),
+        views_count=views_count,
+        peak_viewers=peak_viewers,
     )
 
 
@@ -109,6 +113,11 @@ async def build_stream_detail(
             "likes_count": likes_count,
             "user_liked": user_liked,
             "viewers_count": count_viewers(str(stream.id)),
+            "views_count": int(getattr(stream, "views_count", None) or 0),
+            "peak_viewers": max(
+                int(getattr(stream, "peak_viewers", None) or 0),
+                count_viewers(str(stream.id)),
+            ),
             "channel_id": channel_id,
             "channel_handle": channel_handle,
             "archived_video_id": str(stream.archived_video_id) if stream.archived_video_id else None,

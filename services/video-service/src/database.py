@@ -473,8 +473,10 @@ class Video(Base):
     @classmethod
     async def increment_views(cls, db: AsyncSession, video_id: str):
         await db.execute(
-            text("UPDATE videos SET views_count = views_count + 1 WHERE id = :id"),
-            {"id": video_id}
+            text(
+                "UPDATE videos SET views_count = COALESCE(views_count, 0) + 1 WHERE id = :id"
+            ),
+            {"id": video_id},
         )
         await db.commit()
 

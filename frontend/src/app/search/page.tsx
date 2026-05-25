@@ -5,7 +5,9 @@ import { useSearchParams } from 'next/navigation';
 import Header from '@/components/layout/Header';
 import Sidebar from '@/components/layout/Sidebar';
 import VideoCard from '@/components/video/VideoCard';
+import Link from 'next/link';
 import { searchAPI } from '@/services/api';
+import { useAuth } from '@/services/auth';
 import { useSidebar } from '@/contexts/SidebarContext';
 import { resolveMediaUrl } from '@/lib/media-url';
 
@@ -52,6 +54,7 @@ function mapSearchHit(hit: Record<string, unknown>): Video {
 export default function SearchPage() {
   const searchParams = useSearchParams();
   const query = searchParams.get('q') || '';
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { isCollapsed } = useSidebar();
   
   const [videos, setVideos] = useState<Video[]>([]);
@@ -62,6 +65,13 @@ export default function SearchPage() {
     const fetchResults = async () => {
       if (!query) {
         setVideos([]);
+        setTotal(0);
+        setIsLoading(false);
+        return;
+      }
+      if (!isAuthenticated) {
+        setVideos([]);
+        setTotal(0);
         setIsLoading(false);
         return;
       }
@@ -80,8 +90,9 @@ export default function SearchPage() {
       }
     };
 
+    if (authLoading) return;
     fetchResults();
-  }, [query]);
+  }, [query, isAuthenticated, authLoading]);
 
   return (
     <div className="min-h-screen bg-dgi-bg">
@@ -98,6 +109,15 @@ export default function SearchPage() {
           {isLoading ? (
             <div className="flex items-center justify-center h-64">
               <div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : !isAuthenticated ? (
+            <div className="text-center py-12">
+              <p className="text-dgi-muted text-lg">
+                <Link href="/login" className="text-dgi-primary hover:underline">
+                  Войдите
+                </Link>
+                , чтобы искать видео
+              </p>
             </div>
           ) : videos.length === 0 ? (
             <div className="text-center py-12">

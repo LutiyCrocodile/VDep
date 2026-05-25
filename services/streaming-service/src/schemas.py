@@ -32,6 +32,8 @@ class StreamResponse(BaseModel):
     created_at: Optional[datetime] = None
     thumbnail_url: Optional[str] = None
     thumbnail_cache_version: Optional[int] = None
+    views_count: int = 0
+    peak_viewers: int = 0
 
 
 class StreamDetailResponse(StreamResponse):

@@ -14,6 +14,7 @@ from elasticsearch import AsyncElasticsearch
 from .database import get_db, create_tables, Subtitle
 from .config import settings
 from .http_client import close_http_client, get_http_client
+from .deps import require_current_user_id
 from .search_query import build_search_query
 
 logging.basicConfig(level=logging.INFO)
@@ -253,24 +254,11 @@ async def search_videos(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=50),
     tags: Optional[str] = Query(None),
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    user_id: str = Depends(require_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    """Полнотекстовый поиск. JWT опционален — без токена только public."""
+    """Полнотекстовый поиск — только для авторизованных пользователей."""
     try:
-        user_id = None
-        if credentials:
-            client = get_http_client()
-            try:
-                response = await client.get(
-                    f"{settings.auth_service_url}/users/me",
-                    headers={"Authorization": f"Bearer {credentials.credentials}"},
-                )
-                if response.status_code == 200:
-                    user_id = response.json()["id"]
-            except httpx.RequestError:
-                pass
-
         search_body = {
             "from": skip,
             "size": limit,

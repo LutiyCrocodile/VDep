@@ -743,16 +743,23 @@ async def record_view(
         }
     )
 
-    # Increment views count only for new views
+    # Increment views count only for new views (COALESCE: NULL + 1 = NULL в PostgreSQL)
     await db.execute(
         text("""
-            UPDATE videos 
-            SET views_count = views_count + 1 
+            UPDATE videos
+            SET views_count = COALESCE(views_count, 0) + 1
             WHERE id = :video_id
         """),
-        {"video_id": video_id}
+        {"video_id": video_id},
     )
     await db.commit()
+
+    try:
+        from ..search_client import index_video_for_search
+
+        await index_video_for_search(video_id)
+    except Exception as exc:
+        logger.warning("search reindex after view failed for %s: %s", video_id, exc)
 
     return {"message": "View recorded", "already_viewed": False}
 
