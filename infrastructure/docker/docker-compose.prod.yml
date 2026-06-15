@@ -112,20 +112,22 @@ services:
       CORS_ALLOWED_ORIGINS: http://${DOMAIN:-localhost}:5173,http://${DOMAIN:-localhost}:3002
 
   # ── MinIO: обновляем CORS под prod-домен ─────────────────────────────────
+  # List-формат entrypoint избегает shlex-парсинга (нет ошибки "invalid command line string")
   minio-init:
     environment:
       MC_ACCESS: ${MINIO_ROOT_USER:-minioadmin}
       MC_SECRET: ${MINIO_ROOT_PASSWORD:-minioadmin}
-    entrypoint: >
-      sh -c "
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
         sleep 5 &&
         mc alias set local http://minio:9000 $$MC_ACCESS $$MC_SECRET &&
         mc mb -p local/videos &&
         mc anonymous set download local/videos &&
-        printf '%s\n' '{\"CORSRules\":[{\"AllowedOrigins\":[\"http://${DOMAIN:-localhost}:3000\",\"http://${DOMAIN:-localhost}:3002\",\"http://${DOMAIN:-localhost}:5173\"],\"AllowedMethods\":[\"GET\",\"HEAD\",\"PUT\",\"POST\"],\"AllowedHeaders\":[\"*\"],\"ExposeHeaders\":[\"Content-Length\",\"ETag\"],\"MaxAgeSeconds\":3000}]}' > /tmp/cors.json &&
+        echo '{"CORSRules":[{"AllowedOrigins":["http://${DOMAIN:-localhost}:3000","http://${DOMAIN:-localhost}:3002","http://${DOMAIN:-localhost}:3005","http://${DOMAIN:-localhost}:5173"],"AllowedMethods":["GET","HEAD","PUT","POST"],"AllowedHeaders":["*"],"MaxAgeSeconds":3000}]}' > /tmp/cors.json &&
         mc cors set local/videos /tmp/cors.json || true &&
-        echo 'MinIO bucket configured for production'
-      "
+        echo 'MinIO CORS configured for production'
 
   # ── Nginx: убираем profile, порт 80 ──────────────────────────────────────
   nginx:
