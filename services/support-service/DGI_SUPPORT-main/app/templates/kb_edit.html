@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% block content %}
+  <div class="mb-4">
+    <a href="/kb" class="text-sm text-muted hover:underline">← База знаний</a>
+  </div>
+
+  <div class="mx-auto max-w-3xl">
+    <div class="card-glow card-panel p-8">
+      <h1 class="text-2xl font-semibold">{{ 'Редактирование' if article else 'Новая статья' }}</h1>
+
+      {% if error %}
+        <div class="mt-3 rounded-xl bg-red-500/10 p-3 text-sm text-red-200 ring-1 ring-red-500/30">{{ error }}</div>
+      {% endif %}
+
+      <form class="mt-4 grid gap-3" method="post" action="{{ '/kb/' ~ article.id ~ '/edit' if article else '/kb/new' }}" enctype="multipart/form-data">
+        <div>
+          <label class="text-sm text-muted">Заголовок</label>
+          <input name="title" value="{{ article.title if article else '' }}" required class="mt-1 input-field" />
+        </div>
+
+        <div>
+          <label class="text-sm text-muted">Категория</label>
+          <select name="category" class="mt-1 input-field">
+            {% for cat in KbCategory %}
+              <option value="{{ cat.value }}" {% if article and article.category.value == cat.value %}selected{% endif %}>
+                {{ category_labels[cat] }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label class="text-sm text-muted">Содержание</label>
+          <p class="text-[11px] text-muted-2">Поддерживается простой текст. Для больших инструкций прикрепите файл ниже.</p>
+          <textarea name="body" rows="12" class="mt-1 input-field font-mono text-sm">{{ article.body if article else '' }}</textarea>
+        </div>
+
+        <div>
+          <label class="text-sm text-muted">Прикрепить файл (необязательно)</label>
+          <input type="file" name="file" class="mt-1 input-field" />
+        </div>
+
+        <div class="flex items-center gap-3">
+          <label class="text-sm text-muted">Опубликовать</label>
+          <select name="is_published" class="input-field">
+            <option value="1" {% if not article or article.is_published %}selected{% endif %}>Да</option>
+            <option value="0" {% if article and not article.is_published %}selected{% endif %}>Нет (черновик)</option>
+          </select>
+        </div>
+
+        <button class="btn btn-primary">Сохранить</button>
+      </form>
+
+      {% if article and article.files %}
+        <div class="mt-6 border-t pt-4" style="border-color:var(--border)">
+          <h3 class="text-sm font-semibold text-muted">Прикреплённые файлы</h3>
+          <div class="mt-2 grid gap-2">
+            {% for f in article.files %}
+              <div class="flex items-center justify-between rounded-xl px-3 py-2 ring-1 ring-border">
+                <a href="/kb/files/{{ f.id }}/download" class="text-sm hover:underline">📎 {{ f.original_name }}</a>
+                <form method="post" action="/kb/files/{{ f.id }}/delete" onsubmit="return confirm('Удалить файл?')">
+                  <button class="text-xs text-muted-2 hover:text-red-400">✕</button>
+                </form>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}

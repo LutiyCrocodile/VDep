@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block content %}
+  <div class="flex items-center justify-between">
+    <h1 class="text-2xl font-semibold">Пользователи</h1>
+  </div>
+
+  <form method="get" action="/users" class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+    <input name="q" value="{{ q or '' }}" placeholder="Поиск по ФИО, логину, должности, кабинету..." class="w-full sm:w-96 rounded-xl bg-slate-950/60 px-3 py-2 ring-1 ring-slate-800 focus:outline-none focus:ring-sky-500" />
+    <button class="btn btn-secondary">Найти</button>
+  </form>
+
+  <div class="mt-4 grid gap-3">
+    {% for u in users %}
+      <a href="/users/{{ u.id }}" class="card-glow rounded-2xl theme-card p-5 ring-1 ring-slate-800 hover:ring-slate-700 transition">
+        <div class="text-lg font-semibold">{{ u.full_name or u.username }}</div>
+        <div class="mt-1 text-sm text-slate-300">Логин: {{ u.username }}@mos.ru • Роль: {{ u.role.value }}</div>
+        {% if u.position %}
+          <div class="mt-1 text-sm text-slate-300">Должность: {{ u.position }}</div>
+        {% endif %}
+        <div class="mt-1 text-sm text-slate-300">Кабинет: {{ u.office or '—' }} • Внутр. номер: {{ u.internal_number or '—' }}</div>
+      </a>
+    {% else %}
+      <div class="rounded-2xl theme-card p-6 ring-1 ring-slate-800 text-slate-300">Пользователей нет.</div>
+    {% endfor %}
+  </div>
+{% endblock %}

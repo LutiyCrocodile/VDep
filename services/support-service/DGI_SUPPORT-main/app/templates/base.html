@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="ru" data-ui-build="ui40">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ title or 'Техподдержка ДГИ' }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@2.0.6"></script>
+    <link rel="stylesheet" href="/static/app.css?v=ui63" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Didact+Gothic&display=swap" rel="stylesheet">
+    <script>
+      (function() {
+        try {
+          const preset = localStorage.getItem('ui.preset') || '';
+          const density = localStorage.getItem('ui.density') || '';
+          const font = localStorage.getItem('ui.font') || '';
+
+          const prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+          const fallbackPreset = prefersLight ? 'light' : 'dark';
+          const p = preset || fallbackPreset;
+
+          document.documentElement.dataset.preset = p;
+          document.documentElement.dataset.accent = 'dgi';
+          document.documentElement.dataset.density = density || 'cozy';
+          document.documentElement.dataset.font = font || 'md';
+          document.documentElement.setAttribute('lang', 'ru');
+
+          document.documentElement.dataset.theme = (p === 'light' || p === 'sand' || p === 'paper') ? 'light' : 'dark';
+        } catch (e) {
+          document.documentElement.dataset.preset = 'dark';
+          document.documentElement.dataset.accent = 'dgi';
+          document.documentElement.dataset.density = 'cozy';
+          document.documentElement.dataset.font = 'md';
+          document.documentElement.dataset.theme = 'dark';
+        }
+      })();
+    </script>
+  </head>
+  <body class="min-h-screen theme-bg theme-text">
+    {# ── Красная панель ДГИ ────────────────────────────────────────── #}
+    <div class="brand-bar">
+      <div class="brand-logo-area">
+        <a href="/" class="flex items-center gap-2 no-underline">
+          <img src="/static/logo_dgi_wide.png" alt="ДГИ" class="h-12" />
+        </a>
+      </div>
+      <div class="brand-nav-area">
+        <a href="/" class="brand-title no-underline hidden sm:inline">Техподдержка ДГИ</a>
+        {% if user %}
+        <nav class="flex items-center gap-1 text-sm text-white/90">
+          <a class="nav-link" href="/app">
+            Заявки
+          </a>
+          {% if user.role in ['engineer','admin'] %}
+            <a class="nav-link" href="/equipment">Оборудование</a>
+          {% endif %}
+          {% if user.role == 'admin' %}
+            <a class="nav-link inline-flex items-center" href="/admin/users">
+              Пользователи <span id="pendingRegBadge" class="hidden"></span>
+            </a>
+          {% elif user.role == 'engineer' %}
+            <a class="nav-link" href="/users">Пользователи</a>
+          {% endif %}
+          <a class="nav-link" href="/kb">База знаний</a>
+          <a class="nav-link" href="/notifications">
+            Уведомления <span id="notifBadge" class="hidden"></span>
+          </a>
+          <button id="themeToggle" type="button" class="nav-link ml-1" aria-label="Переключить тему">🌓</button>
+          <div class="menu relative ml-1">
+            <button id="userMenuBtn" type="button" class="nav-link" aria-haspopup="true" aria-expanded="false" aria-label="Меню">⋮</button>
+            <div id="userMenuPanel" class="menu-panel hidden" role="menu" aria-hidden="true">
+              <a class="menu-item" role="menuitem" href="/profile">Профиль</a>
+              <a class="menu-item" role="menuitem" href="/settings">Настройки</a>
+              <form action="/logout" method="post">
+                <button class="menu-item w-full text-left" role="menuitem">Выйти</button>
+              </form>
+            </div>
+          </div>
+        </nav>
+        {% else %}
+        <nav class="flex items-center gap-2 text-sm">
+          {% set p = request.url.path %}
+          {% if p != '/login' %}<a class="nav-link-white" href="/login">Войти</a>{% endif %}
+        </nav>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="mx-auto max-w-6xl px-4 py-6">
+      <main class="fade-in">
+        {% block content %}{% endblock %}
+      </main>
+
+      <div id="settingsModal" class="modal hidden" aria-hidden="true">
+        <div class="modal-backdrop" data-close="true"></div>
+          <div class="modal-panel theme-card ring-1 ring-border">
+          <div class="flex items-center justify-between">
+            <div class="text-lg font-semibold">Настройки</div>
+            <button type="button" class="btn btn-secondary" data-close="true">Закрыть</button>
+          </div>
+          <div class="mt-4 grid gap-3">
+            <div>
+              <label class="text-xs text-muted">Тема</label>
+              <select id="uiPreset" class="mt-1 input-field">
+                <option value="dark">Тёмная</option>
+                <option value="light">Светлая</option>
+              </select>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs text-muted">Плотность</label>
+                <select id="uiDensity" class="mt-1 input-field">
+                  <option value="cozy">Стандарт</option>
+                  <option value="compact">Компактная</option>
+                </select>
+              </div>
+              <div>
+                <label class="text-xs text-muted">Размер шрифта</label>
+                <select id="uiFont" class="mt-1 input-field">
+                  <option value="sm">S</option>
+                  <option value="md">M</option>
+                  <option value="lg">L</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="text-xs text-muted">Анимации</label>
+              <select id="uiMotion" class="mt-1 input-field">
+                <option value="normal">Обычные</option>
+                <option value="reduce">Минимум</option>
+              </select>
+            </div>
+            <button id="uiReset" type="button" class="btn btn-secondary">Сбросить настройки</button>
+          </div>
+        </div>
+      </div>
+
+      <footer class="mt-10 text-xs text-slate-500">Техподдержка ДГИ &copy; Департамент городского имущества города Москвы</footer>
+    </div>
+    {% if user and user.role == 'admin' %}
+      <script>
+        (function(){
+          var badge = document.getElementById('pendingRegBadge');
+          if (!badge) return;
+
+          var seenKey = 'admin.pendingRegs.lastSeenCount';
+          var getSeen = function(){
+            try { return parseInt(localStorage.getItem(seenKey) || '0', 10) || 0; } catch (e) { return 0; }
+          };
+          var setSeen = function(v){
+            try { localStorage.setItem(seenKey, String(v)); } catch (e) {}
+          };
+
+          var render = function(count){
+            var c = count || 0;
+            var seen = getSeen();
+            if (c < seen) {
+              seen = c;
+              setSeen(c);
+            }
+
+            var delta = Math.max(0, c - seen);
+            if (delta <= 0) {
+              badge.className = 'hidden';
+              badge.textContent = '';
+              return;
+            }
+            badge.className = 'ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1 text-xs font-semibold text-white ring-1 ring-rose-400/30';
+            badge.textContent = String(delta);
+          };
+
+          var poll = function(){
+            fetch('/admin/pending-count', { credentials: 'same-origin' })
+              .then(function(r){ return r.json(); })
+              .then(function(data){
+                var count = parseInt((data && data.count) || 0, 10) || 0;
+                if (window.location.pathname === '/admin/users') {
+                  setSeen(count);
+                }
+                render(count);
+              })
+              .catch(function(){});
+          };
+
+          poll();
+          setInterval(poll, 10000);
+        })();
+      </script>
+    {% endif %}
+
+    {% if user %}
+      <script>
+        (function(){
+          var badge = document.getElementById('notifBadge');
+          if (!badge) return;
+          var render = function(count){
+            var c = count || 0;
+            if (c <= 0) { badge.className = 'hidden'; badge.textContent = ''; return; }
+            badge.className = 'ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1 text-xs font-semibold text-white ring-1 ring-rose-400/30';
+            badge.textContent = String(c);
+          };
+          var poll = function(){
+            fetch('/notifications/count', { credentials: 'same-origin' })
+              .then(function(r){ return r.json(); })
+              .then(function(data){ render(data.count || 0); })
+              .catch(function(){});
+          };
+          poll();
+          setInterval(poll, 15000);
+        })();
+      </script>
+    {% endif %}
+    <script src="/static/toast.js"></script>
+    <script src="/static/app.js?v=ui40"></script>
+    <script>
+      (function(){
+        var b=document.getElementById('themeToggle');
+        if(!b) return;
+        var t=document.documentElement.dataset.theme||'dark';
+        b.textContent=(t==='light'?'☾':'☀');
+      })();
+    </script>
+  </body>
+</html>

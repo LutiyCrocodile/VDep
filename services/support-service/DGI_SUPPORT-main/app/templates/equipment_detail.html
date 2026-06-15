@@ -1,0 +1,197 @@
+{% extends 'base.html' %}
+{% block content %}
+  <div class="mb-4">
+    <a href="/equipment" class="text-sm text-muted hover:underline">← Оборудование</a>
+  </div>
+
+  <div class="mx-auto max-w-3xl">
+    <div class="card-glow card-panel p-8">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h1 class="text-2xl font-semibold">{{ item.name }}</h1>
+          <div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            <span class="rounded-full bg-accent/10 px-2 py-0.5 ring-1 ring-accent/30 text-accent">
+              {{ EQUIPMENT_CATEGORY_LABELS.get(item.category, item.category.value) }}
+            </span>
+            {% if item.consumable_type %}
+              <span class="rounded-full bg-blue-500/10 px-2 py-0.5 ring-1 ring-blue-500/30 text-blue-300">
+                {{ CONSUMABLE_TYPE_LABELS.get(item.consumable_type, item.consumable_type.value) }}
+              </span>
+            {% endif %}
+            <span class="inline-flex rounded-lg px-2.5 py-1 text-sm {% if item.status.value == 'assigned' %}bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/30{% elif item.status.value == 'retired' %}bg-red-500/10 text-red-300 ring-1 ring-red-500/30{% else %}bg-accent/10 text-accent ring-1 ring-accent/30{% endif %}">
+              {{ EQUIPMENT_STATUS_LABELS.get(item.status, item.status.value) }}
+            </span>
+          </div>
+        </div>
+        <form method="post" action="/equipment/{{ item.id }}/delete" onsubmit="return confirm('Удалить оборудование?')">
+          <button class="btn btn-danger text-xs px-3 py-1">Удалить</button>
+        </form>
+      </div>
+
+      <div class="mt-6 grid gap-4 sm:grid-cols-2">
+        <div>
+          <div class="text-xs text-muted-2">Модель</div>
+          <div class="mt-1 text-sm">{{ item.model or '—' }}</div>
+        </div>
+        <div>
+          <div class="text-xs text-muted-2">Серийный номер</div>
+          <div class="mt-1 text-sm font-mono">{{ item.serial_number or '—' }}</div>
+        </div>
+        <div>
+          <div class="text-xs text-muted-2">Местоположение</div>
+          <div class="mt-1 text-sm">{{ item.location or '—' }}</div>
+        </div>
+        <div>
+          <div class="text-xs text-muted-2">На складе</div>
+          <div class="mt-1 text-sm">{{ 'Да' if item.is_warehouse else 'Нет' }}</div>
+        </div>
+        <div>
+          <div class="text-xs text-muted-2">Закреплено за</div>
+          <div class="mt-1 text-sm">
+            {% if assigned_user %}
+              <a href="/users/{{ assigned_user.id }}" class="text-accent hover:underline">{{ assigned_user.full_name or assigned_user.username }}</a>
+            {% else %}
+              —
+            {% endif %}
+          </div>
+        </div>
+        <div>
+          <div class="text-xs text-muted-2">Примечания</div>
+          <div class="mt-1 text-sm whitespace-pre-line">{{ item.notes or '—' }}</div>
+        </div>
+      </div>
+
+      <div class="mt-8 border-t pt-6" style="border-color:var(--border)">
+        <h2 class="text-lg font-semibold">Редактировать</h2>
+        <form class="mt-4 grid gap-4" method="post" action="/equipment/{{ item.id }}/update">
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label class="text-sm text-muted">Категория</label>
+              <select name="category" class="mt-1 input-field">
+                {% for cat in EquipmentCategory %}
+                  <option value="{{ cat.value }}" {% if cat.value == item.category.value %}selected{% endif %}>{{ EQUIPMENT_CATEGORY_LABELS[cat] }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label class="text-sm text-muted">Тип расходника</label>
+              <select name="consumable_type" class="mt-1 input-field">
+                <option value="">—</option>
+                {% for ct in ConsumableType %}
+                  <option value="{{ ct.value }}" {% if item.consumable_type and ct.value == item.consumable_type %}selected{% endif %}>{{ CONSUMABLE_TYPE_LABELS[ct] }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label class="text-sm text-muted">Статус</label>
+              <select name="status" class="mt-1 input-field" id="status_edit" onchange="document.getElementById('location_edit').disabled = this.value == 'in_stock'; if(this.value == 'in_stock') document.getElementById('location_edit').value = '';">
+                {% for st in EquipmentStatus %}
+                  <option value="{{ st.value }}" {% if st.value == item.status %}selected{% endif %}>{{ EQUIPMENT_STATUS_LABELS.get(st, st.value) }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label class="text-sm text-muted">Выдано сотруднику</label>
+              <input type="text" class="mt-1 input-field user-assign-input" placeholder="Начните вводить ФИО..." data-id="{{ item.assigned_to_user_id or '' }}" value="{% if assigned_user %}{{ assigned_user.full_name or assigned_user.username }}{% endif %}" />
+              <input type="hidden" name="assigned_to_user_id" class="user-assign-id" value="{{ item.assigned_to_user_id or '' }}" />
+            </div>
+          </div>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label class="text-sm text-muted">Название</label>
+              <input name="name" value="{{ item.name }}" class="mt-1 input-field" />
+            </div>
+            <div>
+              <label class="text-sm text-muted">Модель</label>
+              <input name="model" value="{{ item.model or '' }}" class="mt-1 input-field" />
+            </div>
+          </div>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label class="text-sm text-muted">Серийный номер</label>
+              <input name="serial_number" value="{{ item.serial_number or '' }}" class="mt-1 input-field" />
+            </div>
+            <div>
+              <label class="text-sm text-muted">Кабинет</label>
+              <input name="location" id="location_edit" value="{{ item.location or '' }}" class="mt-1 input-field" {% if item.status.value == 'in_stock' %}disabled{% endif %} />
+            </div>
+          </div>
+          <div>
+            <label class="text-sm text-muted">Заметки</label>
+            <textarea name="notes" rows="3" class="mt-1 input-field">{{ item.notes or '' }}</textarea>
+          </div>
+          <button class="btn btn-primary">Сохранить</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function(){
+      // Initialize location field state based on status
+      var statusSelect = document.getElementById('status_edit');
+      var locationInput = document.getElementById('location_edit');
+      if (statusSelect && locationInput) {
+        locationInput.disabled = statusSelect.value == 'in_stock';
+      }
+      
+      var debounce = null;
+      document.querySelectorAll('.user-assign-input').forEach(function(inp){
+        var hid = inp.parentElement.querySelector('.user-assign-id');
+        var list = document.createElement('div');
+        list.className = 'absolute z-50 mt-1 w-full max-h-60 overflow-auto rounded-xl bg-slate-950 ring-1 ring-slate-800 shadow-xl hidden';
+        list.style.minWidth = '280px';
+        inp.parentElement.style.position = 'relative';
+        inp.parentElement.appendChild(list);
+
+        inp.addEventListener('input', function(){
+          clearTimeout(debounce);
+          var q = inp.value.trim();
+          if (!q) { hid.value = ''; list.className = list.className.replace('hidden','') + ' hidden'; return; }
+          debounce = setTimeout(function(){
+            fetch('/users/search?q=' + encodeURIComponent(q), {credentials:'same-origin'})
+              .then(function(r){return r.json();})
+              .then(function(data){
+                list.innerHTML = '';
+                if (!data.length) {
+                  var noResults = document.createElement('div');
+                  noResults.className = 'px-3 py-2 text-sm text-slate-400';
+                  noResults.textContent = 'Ничего не найдено';
+                  list.appendChild(noResults);
+                  list.className = list.className.replace(' hidden','');
+                  return;
+                }
+                data.forEach(function(d){
+                  var opt = document.createElement('div');
+                  opt.className = 'px-3 py-2 text-sm text-white cursor-pointer hover:bg-slate-800 transition-colors';
+                  opt.textContent = d.label;
+                  opt.addEventListener('mousedown', function(e){
+                    e.preventDefault();
+                    inp.value = d.label.split(' (')[0];
+                    hid.value = d.id;
+                    list.className += ' hidden';
+                  });
+                  list.appendChild(opt);
+                });
+                list.className = list.className.replace(' hidden','');
+              });
+          }, 250);
+        });
+
+        inp.addEventListener('blur', function(){
+          setTimeout(function(){ list.className += ' hidden'; }, 200);
+        });
+
+        inp.addEventListener('focus', function(){
+          if (inp.value.trim().length >= 2) inp.dispatchEvent(new Event('input'));
+        });
+
+        inp.addEventListener('change', function(){
+          if (!inp.value.trim()) hid.value = '';
+        });
+      });
+    })();
+  </script>
+{% endblock %}

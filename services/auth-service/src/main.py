@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from jose import JWTError, jwt
 import bcrypt
 import logging
+import hashlib
 
 from .database import get_db, create_tables, async_session, User, Role, Permission, Service, ServiceRole, ServicePermission, ServiceRolePermission, UserServiceRole
 from .config import settings
@@ -63,6 +64,26 @@ class UserResponse(BaseModel):
     is_active: bool
     is_employee: bool = True
     full_name: Optional[str] = None
+
+
+class InternalUserCreate(BaseModel):
+    username: str
+    email: EmailStr
+    password: str
+    full_name: Optional[str] = None
+    role: str = "user"
+    is_employee: bool = True
+    service_slug: Optional[str] = None
+    service_role: Optional[str] = None
+
+
+class InternalUserUpdate(BaseModel):
+    username: Optional[str] = None
+    email: Optional[EmailStr] = None
+    password: Optional[str] = None
+    full_name: Optional[str] = None
+    role: Optional[str] = None
+    is_active: Optional[bool] = None
 
 async def initialize_services(db: AsyncSession):
     """Initialize default services, roles, and permissions for multi-service architecture"""
@@ -371,6 +392,20 @@ async def authenticate_ldap(username: str, password: str) -> Optional[dict]:
         logger.error(f"LDAP authentication error: {e}")
         return None
 
+def _token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+async def _is_token_revoked(db: AsyncSession, token: str) -> bool:
+    # Best-effort cleanup of expired revoked tokens
+    await db.execute(text("DELETE FROM revoked_tokens WHERE expires_at < now()"))
+    res = await db.execute(
+        text("SELECT 1 FROM revoked_tokens WHERE token_hash = :h LIMIT 1"),
+        {"h": _token_hash(token)},
+    )
+    return res.first() is not None
+
+
 async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -378,6 +413,8 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
+        if await _is_token_revoked(db, token):
+            raise credentials_exception
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
@@ -395,6 +432,41 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
     if not current_user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
+
+
+@app.post("/logout")
+async def logout(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Revoke current access token so other services (messenger/video/etc)
+    see 401 and logout too.
+    """
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Token required")
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        exp = payload.get("exp")
+        if not exp:
+            # If token has no exp, revoke for short time
+            expires_at = datetime.utcnow() + timedelta(minutes=30)
+        else:
+            expires_at = datetime.utcfromtimestamp(int(exp))
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    await db.execute(
+        text("""
+            INSERT INTO revoked_tokens (token_hash, expires_at)
+            VALUES (:h, :expires_at)
+            ON CONFLICT (token_hash) DO UPDATE SET expires_at = EXCLUDED.expires_at
+        """),
+        {"h": _token_hash(token), "expires_at": expires_at},
+    )
+    await db.commit()
+    return {"status": "ok"}
 
 @app.post("/register", response_model=UserResponse)
 async def register(
@@ -545,6 +617,39 @@ async def read_user_services(
 ):
     """Get service-specific permissions for current user"""
     services = await current_user.get_service_permissions(db)
+
+    # Default access model (dev/prod-safe baseline):
+    # - Any authenticated user can access any active service.
+    # - Service role is derived automatically when explicit grant doesn't exist.
+    #   Global admin => admin in any service.
+    #   Otherwise: video=>viewer, messenger=>user, dashboard=>viewer, support=>user.
+    global_role = current_user.role.name if current_user.role else "user"
+    defaults = {
+        "video": "viewer",
+        "messenger": "user",
+        "dashboard": "viewer",
+        "support": "user",
+    }
+
+    for slug, default_role in defaults.items():
+        if slug in services:
+            continue
+        role_name = "admin" if global_role == "admin" else default_role
+        # Fetch permissions for that service role
+        result = await db.execute(
+            text("""
+                SELECT array_agg(sp.name) AS permissions
+                FROM service_roles sr
+                JOIN services s ON s.id = sr.service_id
+                LEFT JOIN service_role_permissions srp ON sr.id = srp.role_id
+                LEFT JOIN service_permissions sp ON sp.id = srp.permission_id
+                WHERE s.slug = :service_slug AND sr.name = :role_name AND s.is_active = true AND sr.is_active = true
+            """),
+            {"service_slug": slug, "role_name": role_name},
+        )
+        row = result.first()
+        perms = [p for p in (row.permissions if row and row.permissions else []) if p is not None]
+        services[slug] = {"role": role_name, "perms": perms}
     return {
         "user_id": str(current_user.id),
         "username": current_user.username,
@@ -624,13 +729,13 @@ async def internal_user_profile_mini(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: AsyncSession = Depends(get_db),
 ):
-    """Минимальный профиль (username) для списков эфиров и других межсервисных сценариев."""
+    """Минимальный профиль (username, email) для списков эфиров и других межсервисных сценариев."""
     if credentials.credentials != settings.internal_auth_token:
         raise HTTPException(status_code=403, detail="Forbidden")
     user = await User.get_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return {"id": str(user.id), "username": user.username}
+    return {"id": str(user.id), "username": user.username, "email": user.email}
 
 
 @app.get("/internal/users/{user_id}/contact")
@@ -710,6 +815,29 @@ async def get_user_permissions_internal(
     permissions = [row[0] for row in result.fetchall()]
     return permissions
 
+@app.get("/internal/users/{user_id}/services")
+async def get_user_all_services_internal(
+    user_id: str,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db)
+):
+    """Internal endpoint to get user's access to all services"""
+    if credentials.credentials != settings.internal_auth_token:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    user = await User.get_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Get user's service permissions
+    services = await user.get_service_permissions(db)
+
+    return {
+        "user_id": str(user.id),
+        "services": services
+    }
+
+
 @app.get("/internal/users/{user_id}/services/{service_slug}")
 async def check_user_service_access_internal(
     user_id: str,
@@ -721,24 +849,163 @@ async def check_user_service_access_internal(
     # Validate internal token
     if credentials.credentials != settings.internal_auth_token:
         raise HTTPException(status_code=403, detail="Forbidden")
-    
+
     user = await User.get_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     # Get user's service permissions
     services = await user.get_service_permissions(db)
     service_access = services.get(service_slug)
-    
+
+    # If user has no service-specific role, deny access (no fallback to global role)
     if not service_access:
-        raise HTTPException(status_code=403, detail=f"User has no access to service: {service_slug}")
-    
+        return {
+            "user_id": str(user.id),
+            "service": service_slug,
+            "role": None,
+            "permissions": []
+        }
+
     return {
         "user_id": str(user.id),
         "service": service_slug,
         "role": service_access.get("role"),
         "permissions": service_access.get("perms", [])
     }
+
+
+@app.get("/internal/services")
+async def list_services_internal(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db)
+):
+    """Internal endpoint to list all services with their roles"""
+    if credentials.credentials != settings.internal_auth_token:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    result = await db.execute(
+        text("""
+            SELECT s.id, s.slug, s.name, s.description, s.is_active
+            FROM services s
+            WHERE s.is_active = true
+            ORDER BY s.slug
+        """)
+    )
+
+    services = []
+    for row in result.fetchall():
+        service_id = row.id
+        # Get roles for this service
+        roles_result = await db.execute(
+            text("""
+                SELECT id, name, description, is_active
+                FROM service_roles
+                WHERE service_id = :service_id AND is_active = true
+                ORDER BY name
+            """),
+            {"service_id": service_id}
+        )
+
+        roles = []
+        for role_row in roles_result.fetchall():
+            roles.append({
+                "id": str(role_row.id),
+                "name": role_row.name,
+                "description": role_row.description,
+            })
+
+        services.append({
+            "id": str(service_id),
+            "slug": row.slug,
+            "name": row.name,
+            "description": row.description,
+            "roles": roles
+        })
+
+    return {"services": services}
+
+
+@app.post("/internal/users/{user_id}/services/{service_slug}/role")
+async def assign_user_service_role_internal(
+    user_id: str,
+    service_slug: str,
+    payload: dict,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db)
+):
+    """Internal endpoint to assign a role to a user for a specific service"""
+    if credentials.credentials != settings.internal_auth_token:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    user = await User.get_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    role_name = payload.get("role")
+
+    # Get service
+    result = await db.execute(
+        text("SELECT id FROM services WHERE slug = :slug AND is_active = true"),
+        {"slug": service_slug}
+    )
+    service_row = result.first()
+    if not service_row:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    service_id = service_row.id
+
+    # If role_name is empty, remove the service role (no access)
+    if not role_name or role_name.strip() == "":
+        await db.execute(
+            text("""
+                DELETE FROM user_service_roles
+                WHERE user_id = :user_id
+                AND service_role_id IN (
+                    SELECT id FROM service_roles WHERE service_id = :service_id
+                )
+            """),
+            {"user_id": str(user.id), "service_id": service_id}
+        )
+        await db.commit()
+        return {"success": True, "service_slug": service_slug, "role": None}
+
+    # Get service role
+    result = await db.execute(
+        text("SELECT id FROM service_roles WHERE service_id = :service_id AND name = :role_name AND is_active = true"),
+        {"service_id": service_id, "role_name": role_name}
+    )
+    role_row = result.first()
+    if not role_row:
+        raise HTTPException(status_code=404, detail="Role not found in this service")
+
+    service_role_id = role_row.id
+
+    # Remove existing role for this service (if any)
+    await db.execute(
+        text("""
+            DELETE FROM user_service_roles
+            WHERE user_id = :user_id
+            AND service_role_id IN (
+                SELECT id FROM service_roles WHERE service_id = :service_id
+            )
+        """),
+        {"user_id": str(user.id), "service_id": service_id}
+    )
+
+    # Assign new role
+    await db.execute(
+        text("""
+            INSERT INTO user_service_roles (user_id, service_role_id, granted_at, granted_by)
+            VALUES (:user_id, :service_role_id, NOW(), :granted_by)
+        """),
+        {"user_id": str(user.id), "service_role_id": service_role_id, "granted_by": str(user.id)}
+    )
+
+    await db.commit()
+
+    return {"success": True, "service_slug": service_slug, "role": role_name}
+
 
 @app.get("/internal/services/{service_slug}/users")
 async def list_service_users_internal(
@@ -775,6 +1042,200 @@ async def list_service_users_internal(
         })
     
     return {"service": service_slug, "users": users}
+
+
+@app.post("/internal/users/create")
+async def internal_create_user(
+    payload: InternalUserCreate,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a user from trusted internal services (portal/support)."""
+    if credentials.credentials != settings.internal_auth_token:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    username = payload.username.strip()
+    email = payload.email.strip().lower()
+    password = payload.password.strip()
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+
+    existing_username = await User.get_by_username(db, username)
+    if existing_username:
+        raise HTTPException(status_code=400, detail="Username already exists")
+    existing_email = await User.get_by_email(db, email)
+    if existing_email:
+        raise HTTPException(status_code=400, detail="Email already exists")
+
+    role_name = "admin" if payload.role.strip().lower() == "admin" else "user"
+    role = await Role.get_by_name(db, role_name)
+    if not role:
+        role_id = await Role.create(db, name=role_name, description=f"Auto-created {role_name} role")
+    else:
+        role_id = str(role.id)
+
+    created_user = await User.create(
+        db,
+        username=username,
+        email=email,
+        password_hash=get_password_hash(password),
+        role_id=role_id,
+        is_active=True,
+        is_employee=payload.is_employee,
+    )
+
+    if payload.full_name and created_user:
+        await db.execute(
+            text("UPDATE users SET full_name = :full_name WHERE id = CAST(:uid AS uuid)"),
+            {"uid": str(created_user.id), "full_name": payload.full_name.strip()},
+        )
+        await db.commit()
+        created_user = await User.get_by_id(db, str(created_user.id))
+
+    # Assign service role if provided
+    if payload.service_slug and payload.service_role and created_user:
+        # Get service
+        result = await db.execute(
+            text("SELECT id FROM services WHERE slug = :slug AND is_active = true"),
+            {"slug": payload.service_slug}
+        )
+        service_row = result.first()
+        if service_row:
+            service_id = service_row.id
+            # Get service role
+            result = await db.execute(
+                text("SELECT id FROM service_roles WHERE service_id = :service_id AND name = :role_name AND is_active = true"),
+                {"service_id": service_id, "role_name": payload.service_role}
+            )
+            role_row = result.first()
+            if role_row:
+                service_role_id = role_row.id
+                # Assign role to user
+                await db.execute(
+                    text("""
+                        INSERT INTO user_service_roles (user_id, service_role_id, granted_at, granted_by)
+                        VALUES (:user_id, :service_role_id, NOW(), :granted_by)
+                        ON CONFLICT (user_id, service_role_id) DO NOTHING
+                    """),
+                    {"user_id": str(created_user.id), "service_role_id": service_role_id, "granted_by": str(created_user.id)}
+                )
+                await db.commit()
+
+    return {
+        "id": str(created_user.id),
+        "username": created_user.username,
+        "email": created_user.email,
+        "full_name": getattr(created_user, "full_name", None),
+        "role": created_user.role.name if created_user.role else role_name,
+        "is_active": created_user.is_active,
+        "is_employee": created_user.is_employee,
+    }
+
+
+@app.post("/internal/users/{user_id}/update")
+async def internal_update_user(
+    user_id: str,
+    payload: InternalUserUpdate,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db),
+):
+    if credentials.credentials != settings.internal_auth_token:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    user = await User.get_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    updates: list[str] = []
+    params: dict = {"uid": str(user.id)}
+
+    if payload.username is not None:
+        username = payload.username.strip()
+        result = await db.execute(
+            text("SELECT id FROM users WHERE username = :username AND id <> CAST(:uid AS uuid)"),
+            {"username": username, "uid": str(user.id)},
+        )
+        if result.first():
+            raise HTTPException(status_code=400, detail="Username already exists")
+        updates.append("username = :username")
+        params["username"] = username
+
+    if payload.email is not None:
+        email = payload.email.strip().lower()
+        result = await db.execute(
+            text("SELECT id FROM users WHERE email = :email AND id <> CAST(:uid AS uuid)"),
+            {"email": email, "uid": str(user.id)},
+        )
+        if result.first():
+            raise HTTPException(status_code=400, detail="Email already exists")
+        updates.append("email = :email")
+        params["email"] = email
+
+    if payload.password is not None and payload.password.strip():
+        if len(payload.password.strip()) < 8:
+            raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+        updates.append("password_hash = :password_hash")
+        params["password_hash"] = get_password_hash(payload.password.strip())
+
+    if payload.full_name is not None:
+        updates.append("full_name = :full_name")
+        params["full_name"] = payload.full_name.strip() or None
+
+    if payload.is_active is not None:
+        updates.append("is_active = :is_active")
+        params["is_active"] = bool(payload.is_active)
+
+    if payload.role is not None:
+        role_name = "admin" if payload.role.strip().lower() == "admin" else "user"
+        role = await Role.get_by_name(db, role_name)
+        if not role:
+            role_id = await Role.create(db, name=role_name, description=f"Auto-created {role_name} role")
+        else:
+            role_id = str(role.id)
+        updates.append("role_id = CAST(:role_id AS uuid)")
+        params["role_id"] = role_id
+
+    if updates:
+        await db.execute(
+            text(f"UPDATE users SET {', '.join(updates)}, updated_at = NOW() WHERE id = CAST(:uid AS uuid)"),
+            params,
+        )
+        await db.commit()
+
+    refreshed = await User.get_by_id(db, str(user.id))
+    return {
+        "id": str(refreshed.id),
+        "username": refreshed.username,
+        "email": refreshed.email,
+        "full_name": getattr(refreshed, "full_name", None),
+        "role": refreshed.role.name if refreshed.role else "user",
+        "is_active": refreshed.is_active,
+        "is_employee": refreshed.is_employee,
+    }
+
+
+@app.post("/internal/users/{user_id}/delete")
+async def internal_delete_user(
+    user_id: str,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db),
+):
+    if credentials.credentials != settings.internal_auth_token:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    user = await User.get_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Soft delete - set is_active to False
+    await db.execute(
+        text("UPDATE users SET is_active = false, updated_at = NOW() WHERE id = CAST(:uid AS uuid)"),
+        {"uid": user_id},
+    )
+    await db.commit()
+
+    return {"id": user_id, "deleted": True}
+
 
 @app.get("/api/auth/esia/login")
 async def esia_login():

@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% block content %}
+  <div class="flex items-center justify-between">
+    <h1 class="text-2xl font-semibold">Заявки</h1>
+    {% if user.role in ['user','admin'] %}
+      <a href="/tickets/new" class="btn btn-primary">Новая заявка</a>
+    {% endif %}
+  </div>
+
+  <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex flex-wrap items-center gap-2">
+      <a href="/app?view=queue" class="rounded-xl px-3 py-1.5 ring-1 ring-slate-800 {{ 'bg-slate-800' if view != 'archive' else 'bg-slate-900/40' }}">Очередь</a>
+      <a href="/app?view=archive" class="rounded-xl px-3 py-1.5 ring-1 ring-slate-800 {{ 'bg-slate-800' if view == 'archive' else 'bg-slate-900/40' }}">Архив</a>
+      {% if user.role in ['engineer','admin'] %}
+        <a href="/app?view=assigned" class="rounded-xl px-3 py-1.5 ring-1 ring-slate-800 {{ 'bg-slate-800' if view == 'assigned' else 'bg-slate-900/40' }}">Назначено мне</a>
+      {% endif %}
+    </div>
+
+    <form method="get" action="/app" class="app-filters flex flex-col gap-2 sm:flex-row sm:items-center">
+      <input type="hidden" name="view" value="{{ view or 'queue' }}" />
+      <input name="q" value="{{ q or '' }}" placeholder="Поиск по заявкам..." class="w-full sm:w-80 rounded-xl bg-slate-950/60 px-3 py-2 ring-1 ring-slate-800 focus:outline-none focus:ring-sky-500" />
+      <select name="status" class="rounded-xl bg-slate-950/60 px-3 py-2 ring-1 ring-slate-800">
+        <option value="">Все статусы</option>
+        {% for st in TicketStatus %}
+          <option value="{{ st.value }}" {% if status_f == st.value %}selected{% endif %}>{{ TICKET_STATUS_LABELS.get(st, st.value) }}</option>
+        {% endfor %}
+      </select>
+      <select name="priority" class="rounded-xl bg-slate-950/60 px-3 py-2 ring-1 ring-slate-800">
+        <option value="">Любой приоритет</option>
+        {% for p in TicketPriority %}
+          <option value="{{ p.value }}" {% if priority_f == p.value %}selected{% endif %}>{{ TICKET_PRIORITY_LABELS.get(p, p.value) }}</option>
+        {% endfor %}
+      </select>
+      {% if user.role != 'user' %}
+        <select name="assignee" class="rounded-xl bg-slate-950/60 px-3 py-2 ring-1 ring-slate-800">
+          <option value="">Любой исполнитель</option>
+          {% for e in engineers %}
+            <option value="{{ e.id }}" {% if assignee_f == (e.id|string) %}selected{% endif %}>{{ e.username }}</option>
+          {% endfor %}
+        </select>
+      {% endif %}
+      <div class="flex flex-wrap items-center gap-2">
+        <button type="submit" class="btn btn-primary px-4">Применить</button>
+        <a href="/app?view={{ view }}" class="btn btn-secondary px-4">Сбросить</a>
+        <button type="button" class="btn btn-secondary flex items-center gap-2" data-save-filter="true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
+          <span>Сохранить</span>
+        </button>
+        <select class="rounded-xl bg-slate-950/60 px-3 py-2 ring-1 ring-slate-800 text-sm" data-saved-filters="true">
+          <option value="">Мои фильтры…</option>
+        </select>
+      </div>
+    </form>
+  </div>
+
+  <div id="ticketList" hx-get="{{ request.url.path }}?{{ request.url.query }}&partial=1" hx-trigger="refreshTickets" hx-swap="innerHTML">
+    {% include '_ticket_list.html' %}
+  </div>
+{% endblock %}

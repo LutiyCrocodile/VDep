@@ -1,0 +1,265 @@
+{% extends 'base.html' %}
+{% block content %}
+  <div class="grid gap-4 lg:grid-cols-3">
+    <div class="lg:col-span-2">
+      <div class="card-glow rounded-2xl theme-card p-6 ring-1 ring-slate-800">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <div class="text-sm text-slate-400">Заявка #{{ ticket.id }}</div>
+            <h1 class="mt-1 text-2xl font-semibold">{{ ticket.title }}</h1>
+            <div class="mt-2 text-sm text-slate-300 whitespace-pre-line">{{ ticket.description }}</div>
+          </div>
+          <div class="text-right">
+            <div class="text-xs text-slate-400">Статус</div>
+            <div class="mt-1 flex flex-col items-end gap-2">
+              <div class="inline-flex rounded-lg bg-slate-950/70 px-2.5 py-1 text-sm ring-1 ring-slate-800">{{ TICKET_STATUS_LABELS.get(ticket.status, ticket.status.value) }}</div>
+              <div class="inline-flex rounded-lg px-2.5 py-1 text-sm font-medium border-0"
+                   style="{% if ticket.priority == 'low' %}background-color: #10b981; color: #ffffff;{% elif ticket.priority == 'normal' %}background-color: #94a3b8; color: #ffffff;{% elif ticket.priority == 'high' %}background-color: #f59e0b; color: #ffffff;{% elif ticket.priority == 'urgent' %}background-color: #f43f5e; color: #ffffff;{% elif ticket.priority == 'vip' %}background-color: #c8141e; color: #ffffff; font-weight: 700;{% endif %}">
+                {{ TICKET_PRIORITY_LABELS.get(ticket.priority, ticket.priority) }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {% if ticket.resolution %}
+        <div class="mt-4 rounded-2xl theme-card p-6 ring-1 ring-slate-800">
+          <h2 class="text-lg font-semibold">Решение</h2>
+          <div class="mt-2 text-sm text-slate-300 whitespace-pre-line">{{ ticket.resolution }}</div>
+        </div>
+      {% endif %}
+
+      <div class="mt-4 rounded-2xl theme-card p-6 ring-1 ring-slate-800">
+        <h2 class="text-lg font-semibold">Вложения</h2>
+        <form class="mt-3 grid gap-3" method="post" action="/tickets/{{ ticket.id }}/attach" enctype="multipart/form-data">
+          <input type="file" name="file" accept="image/png,image/jpeg,image/webp" class="block w-full text-sm" />
+          <button class="btn btn-secondary justify-self-start">Загрузить фото</button>
+        </form>
+
+        <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {% for a in attachments %}
+            <a href="{{ a.file_path }}" target="_blank" class="block overflow-hidden rounded-xl ring-1 ring-slate-800">
+              <img src="{{ a.file_path }}" alt="attachment" class="h-32 w-full object-cover" />
+            </a>
+          {% else %}
+            <div class="text-sm text-slate-400">Пока нет вложений.</div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="mt-4 rounded-2xl theme-card p-6 ring-1 ring-slate-800">
+        <h2 class="text-lg font-semibold">Комментарии</h2>
+        <div class="mt-3 grid gap-3">
+          {% for c in comments %}
+            <div class="rounded-xl bg-slate-950/50 p-4 ring-1 ring-slate-800">
+              <div class="flex items-center justify-between">
+                <a class="text-sm font-medium hover:underline" href="/users/{{ c.author.id }}">{{ c.author.username }}</a>
+                <div class="flex items-center gap-2">
+                  <div class="text-xs text-slate-500">{{ c.created_at }}</div>
+                  {% if user.role == 'admin' or c.author.id == user.id %}
+                    <form method="post" action="/tickets/{{ ticket.id }}/comment/{{ c.id }}/delete">
+                      <button type="submit" class="btn btn-secondary px-3 py-1 text-xs">Удалить</button>
+                    </form>
+                  {% endif %}
+                </div>
+              </div>
+              <div class="mt-2 text-sm text-slate-300 whitespace-pre-line">{{ c.body }}</div>
+            </div>
+          {% else %}
+            <div class="text-sm text-slate-400">Пока нет комментариев.</div>
+          {% endfor %}
+        </div>
+
+        <form class="mt-4 grid gap-3" method="post" action="/tickets/{{ ticket.id }}/comment">
+          {% if comment_error == 'empty' %}
+            <div class="rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-200 ring-1 ring-rose-500/30">Комментарий не может быть пустым.</div>
+          {% endif %}
+          <textarea name="body" rows="4" required placeholder="Добавить комментарий..." class="w-full rounded-xl bg-slate-950/60 px-3 py-2 ring-1 ring-slate-800 focus:outline-none focus:ring-sky-500"></textarea>
+          <button class="btn btn-primary justify-self-start">Отправить</button>
+        </form>
+      </div>
+      <div class="mt-4 rounded-2xl theme-card p-6 ring-1 ring-slate-800">
+        <h2 class="text-lg font-semibold">История изменений</h2>
+        <div class="mt-4 space-y-4">
+          {% for e in events %}
+            <div class="relative pl-6 pb-4 last:pb-0">
+              <div class="absolute left-0 top-1.5 h-full w-px bg-slate-800"></div>
+              <div class="absolute left-[-4px] top-1.5 h-2 w-2 rounded-full bg-accent ring-4 ring-slate-950"></div>
+              
+              <div class="flex flex-wrap items-baseline gap-x-2">
+                <span class="text-sm font-medium text-slate-200">
+                  {% if e.event_type == 'created' %}Создана
+                  {% elif e.event_type == 'status_change' %}Статус изменен
+                  {% elif e.event_type == 'assigned' %}Исполнитель изменен
+                  {% elif e.event_type == 'resolution' %}Решение добавлено
+                  {% else %}{{ e.event_type }}{% endif %}
+                </span>
+                <span class="text-xs text-slate-500">{{ e.created_at }}</span>
+              </div>
+              
+              <div class="mt-1 text-xs text-slate-400">
+                {% if e.author %}
+                  <span class="text-slate-300">{{ e.author.username }}</span>:
+                {% endif %}
+                {% if e.event_type == 'status_change' or e.event_type == 'assigned' %}
+                  <span class="line-through opacity-50">{{ e.old_value }}</span> → <span>{{ e.new_value }}</span>
+                {% elif e.event_type == 'resolution' %}
+                  <div class="mt-1 rounded bg-slate-950/30 p-2 italic">«{{ e.new_value|truncate(100) }}»</div>
+                {% else %}
+                  {{ e.new_value }}
+                {% endif %}
+              </div>
+            </div>
+          {% else %}
+            <div class="text-sm text-slate-500 italic">Событий пока нет.</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <aside class="grid gap-4">
+      <div class="rounded-2xl bg-slate-900/60 p-6 ring-1 ring-slate-800">
+        <h2 class="text-lg font-semibold">Действия</h2>
+        <div class="mt-3 text-sm text-slate-300">
+          <div class="flex items-center justify-between gap-3">
+            <span class="text-slate-400">Автор:</span>
+            <a class="inline-flex items-center gap-2 rounded-xl bg-slate-950/50 px-2.5 py-1.5 ring-1 ring-slate-800 hover:ring-slate-700" href="/users/{{ ticket.created_by.id }}">
+              <span class="h-7 w-7 overflow-hidden rounded-lg ring-1 ring-slate-800 bg-slate-950/50">
+                {% if ticket.created_by.avatar_path %}
+                  <img src="{{ ticket.created_by.avatar_path }}" alt="avatar" class="h-7 w-7 object-cover" />
+                {% else %}
+                  {% set base = (ticket.created_by.full_name or ticket.created_by.username) %}
+                  {% set parts = base.split() %}
+                  {% set initials = (parts[0][0] if parts|length > 0 else '') ~ (parts[1][0] if parts|length > 1 else '') %}
+                  <span class="flex h-7 w-7 items-center justify-center text-xs font-semibold" style="color: var(--fg); background: rgba(var(--accent-rgb, 56 189 248), 0.10);">{{ initials|upper }}</span>
+                {% endif %}
+              </span>
+              <span class="font-medium">{{ ticket.created_by.username }}</span>
+            </a>
+          </div>
+
+          <div class="mt-2 flex items-center justify-between gap-3">
+            <span class="text-slate-400">Исполнитель:</span>
+            {% if ticket.assigned_to %}
+              <a class="inline-flex items-center gap-2 rounded-xl bg-slate-950/50 px-2.5 py-1.5 ring-1 ring-slate-800 hover:ring-slate-700" href="/users/{{ ticket.assigned_to.id }}">
+                <span class="h-7 w-7 overflow-hidden rounded-lg ring-1 ring-slate-800 bg-slate-950/50">
+                  {% if ticket.assigned_to.avatar_path %}
+                    <img src="{{ ticket.assigned_to.avatar_path }}" alt="avatar" class="h-7 w-7 object-cover" />
+                  {% else %}
+                    {% set base = (ticket.assigned_to.full_name or ticket.assigned_to.username) %}
+                    {% set parts = base.split() %}
+                    {% set initials = (parts[0][0] if parts|length > 0 else '') ~ (parts[1][0] if parts|length > 1 else '') %}
+                    <span class="flex h-7 w-7 items-center justify-center text-xs font-semibold" style="color: var(--fg); background: rgba(var(--accent-rgb, 56 189 248), 0.10);">{{ initials|upper }}</span>
+                  {% endif %}
+                </span>
+                <div class="flex flex-col">
+                  <span class="font-medium">{{ ticket.assigned_to.full_name or ticket.assigned_to.username }}</span>
+                  {% if ticket.assigned_to.internal_number %}
+                    <span class="text-xs text-slate-400">{{ ticket.assigned_to.internal_number }}</span>
+                  {% endif %}
+                </div>
+              </a>
+            {% else %}
+              <span>—</span>
+            {% endif %}
+          </div>
+          <div class="mt-1"><span class="text-slate-400">Статус:</span> {{ TICKET_STATUS_LABELS.get(ticket.status, ticket.status.value) }}</div>
+          <div class="mt-1"><span class="text-slate-400">Приоритет:</span> {{ TICKET_PRIORITY_LABELS.get(ticket.priority, ticket.priority.value) }}</div>
+        </div>
+
+        {% if user.role in ['engineer','admin'] %}
+          <div class="mt-4 grid gap-3">
+            <form method="post" action="/tickets/{{ ticket.id }}/resolution" class="grid gap-2">
+              <label class="text-sm text-slate-300">Добавить решение</label>
+              <textarea name="resolution" rows="4" placeholder="Опиши, что сделано..." class="w-full rounded-xl bg-slate-950/60 px-3 py-2 ring-1 ring-slate-800 focus:outline-none focus:ring-sky-500"></textarea>
+              <button class="btn btn-secondary">Сохранить решение и отметить как решённую</button>
+            </form>
+
+            <form method="post" action="/tickets/{{ ticket.id }}/status" class="grid gap-2">
+              <label class="text-sm text-slate-300">Изменить статус</label>
+              <select name="status" class="rounded-xl bg-slate-950/60 px-3 py-2 ring-1 ring-slate-800">
+                {% for st in TicketStatus %}
+                  <option value="{{ st.value }}" {% if st.value == ticket.status.value %}selected{% endif %}>{{ TICKET_STATUS_LABELS.get(st, st.value) }}</option>
+                {% endfor %}
+              </select>
+              <button class="btn btn-secondary">Сохранить</button>
+            </form>
+
+            <form method="post" action="/tickets/{{ ticket.id }}/assign" class="grid gap-2">
+              <label class="text-sm text-slate-300">Назначить инженера</label>
+              <div style="position:relative">
+                <input type="text" class="w-full rounded-xl bg-slate-950/60 px-3 py-2 ring-1 ring-slate-800 focus:outline-none focus:ring-sky-500 engineer-assign-input" placeholder="Начните вводить ФИО..." value="{% if ticket.assigned_to %}{{ ticket.assigned_to.full_name or ticket.assigned_to.username }}{% endif %}" />
+                <input type="hidden" name="assigned_to_id" class="engineer-assign-id" value="{{ ticket.assigned_to_id or '' }}" />
+              </div>
+              <button class="btn btn-secondary">Назначить</button>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="rounded-2xl bg-slate-900/60 p-6 ring-1 ring-slate-800">
+        <h2 class="text-lg font-semibold">Данные пользователя</h2>
+        <div class="mt-3 grid gap-1 text-sm text-slate-300">
+          <div><span class="text-slate-400">ФИО:</span> {{ (creator.full_name or '—') if creator else '—' }}</div>
+          <div><span class="text-slate-400">Кабинет:</span> {{ (creator.office or '—') if creator else '—' }}</div>
+          <div><span class="text-slate-400">Внутр. номер:</span> {{ (creator.internal_number or '—') if creator else '—' }}</div>
+        </div>
+      </div>
+
+      <div class="rounded-2xl bg-slate-900/60 p-6 ring-1 ring-slate-800">
+        <a class="text-sm text-slate-300 hover:text-white" href="/app">← Назад к списку</a>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    (function(){
+      var debounce = null;
+      document.querySelectorAll('.engineer-assign-input').forEach(function(inp){
+        var hid = inp.parentElement.querySelector('.engineer-assign-id');
+        var list = document.createElement('div');
+        list.className = 'absolute z-50 mt-1 w-full max-h-40 overflow-auto rounded-lg bg-slate-900 ring-1 ring-slate-700 shadow-lg hidden';
+        inp.parentElement.appendChild(list);
+
+        inp.addEventListener('input', function(){
+          clearTimeout(debounce);
+          var q = inp.value.trim();
+          if (!q) { hid.value = ''; list.classList.add('hidden'); return; }
+          debounce = setTimeout(function(){
+            fetch('/users/search?q=' + encodeURIComponent(q) + '&role=engineer', {credentials:'same-origin'})
+              .then(function(r){return r.json();})
+              .then(function(data){
+                list.innerHTML = '';
+                if (!data.length) { list.classList.add('hidden'); return; }
+                data.forEach(function(d){
+                  var opt = document.createElement('div');
+                  opt.className = 'px-3 py-2 text-sm cursor-pointer hover:bg-sky-500/10 text-slate-200';
+                  opt.textContent = d.label;
+                  opt.addEventListener('mousedown', function(e){
+                    e.preventDefault();
+                    inp.value = d.label.split(' (')[0];
+                    hid.value = d.id;
+                    list.classList.add('hidden');
+                  });
+                  list.appendChild(opt);
+                });
+                list.classList.remove('hidden');
+              });
+          }, 250);
+        });
+
+        inp.addEventListener('blur', function(){
+          setTimeout(function(){ list.classList.add('hidden'); }, 200);
+        });
+
+        inp.addEventListener('focus', function(){
+          if (inp.value.trim().length >= 2) inp.dispatchEvent(new Event('input'));
+        });
+
+        inp.addEventListener('change', function(){
+          if (!inp.value.trim()) hid.value = '';
+        });
+      });
+    })();
+  </script>
+{% endblock %}

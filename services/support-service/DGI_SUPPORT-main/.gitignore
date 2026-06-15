@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+mysql-data/
+*.egg-info/
+dist/
+build/
+app/media/avatars/
+app/media/tickets/
+app/media/kb/

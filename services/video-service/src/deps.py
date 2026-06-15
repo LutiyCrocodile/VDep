@@ -47,17 +47,18 @@ async def require_current_user(
 ):
     if not credentials:
         raise HTTPException(status_code=401, detail="Authentication required")
-    client = get_http_client()
-    try:
-        response = await client.get(
-            f"{settings.auth_service_url}/users/me",
-            headers={"Authorization": f"Bearer {credentials.credentials}"},
-        )
-        if response.status_code == 200:
-            return response.json()["id"]
+
+    from .auth_client import auth_client
+
+    user_data = await auth_client.verify_token(credentials.credentials)
+    if not user_data:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    except httpx.RequestError:
-        raise HTTPException(status_code=401, detail="Authentication service unavailable")
+
+    permissions = await auth_client.get_user_service_permissions(user_data["id"])
+    if not permissions or not permissions.get("permissions"):
+        raise HTTPException(status_code=403, detail="No access to video service")
+
+    return user_data["id"]
 
 
 async def get_current_user_with_permissions(
@@ -73,7 +74,7 @@ async def get_current_user_with_permissions(
         raise HTTPException(status_code=401, detail="Invalid token")
 
     permissions = await auth_client.get_user_service_permissions(user_data["id"])
-    if not permissions:
+    if not permissions or not permissions.get("permissions"):
         raise HTTPException(status_code=403, detail="No access to video service")
 
     return {

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#c8141e"/>
+      <stop offset="100%" stop-color="#8c141e"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#g)"/>
+  <path d="M14 44 L14 22 C14 17.6 17.6 14 22 14 L42 14 C46.4 14 50 17.6 50 22 L50 36 C50 40.4 46.4 44 42 44 L26 44 L18 50 L20 44 Z"
+        fill="#ffffff" opacity="0.96"/>
+  <text x="32" y="35" text-anchor="middle"
+        font-family="Century Gothic, Arial, sans-serif"
+        font-weight="700" font-size="14" fill="#aa141e" letter-spacing="0.5">ГКМ</text>
+</svg>

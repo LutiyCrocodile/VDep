@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+{% block content %}
+  <div class="mb-4">
+    <a href="/equipment" class="text-sm text-muted hover:underline">← Оборудование</a>
+  </div>
+
+  <div class="mx-auto max-w-2xl">
+    <div class="card-panel p-8">
+      <h1 class="text-2xl font-semibold">Новое оборудование</h1>
+
+      <form class="mt-4 grid gap-4" method="post" action="/equipment/new">
+        <div>
+          <label class="text-sm text-muted">Категория *</label>
+          <select name="category" class="mt-1 input-field" required>
+            {% for cat in EquipmentCategory %}
+              <option value="{{ cat.value }}">{{ EQUIPMENT_CATEGORY_LABELS[cat] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label class="text-sm text-muted">Тип расходника</label>
+          <select name="consumable_type" class="mt-1 input-field">
+            <option value="">—</option>
+            {% for ct in ConsumableType %}
+              <option value="{{ ct.value }}">{{ CONSUMABLE_TYPE_LABELS[ct] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label class="text-sm text-muted">Статус</label>
+          <select name="status" class="mt-1 input-field" id="status_select" onchange="document.getElementById('location').disabled = this.value == 'in_stock'; if(this.value == 'in_stock') document.getElementById('location').value = '';">
+            {% for st in EquipmentStatus %}
+              <option value="{{ st.value }}" {% if st.value == 'in_stock' %}selected{% endif %}>{{ EQUIPMENT_STATUS_LABELS.get(st, st.value) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label class="text-sm text-muted">Название *</label>
+          <input name="name" required class="mt-1 input-field" placeholder="Моноблок HP EliteOne 800 G6" />
+        </div>
+
+        <div>
+          <label class="text-sm text-muted">Модель</label>
+          <input name="model" class="mt-1 input-field" placeholder="HP EliteOne 800 G6" />
+        </div>
+
+        <div>
+          <label class="text-sm text-muted">Серийный номер</label>
+          <input name="serial_number" class="mt-1 input-field" placeholder="CZC123456" />
+        </div>
+
+        <div>
+          <label class="text-sm text-muted">Местоположение</label>
+          <input name="location" id="location" class="mt-1 input-field" placeholder="18.26 или Склад" />
+        </div>
+
+        <div>
+          <label class="text-sm text-muted">Примечания</label>
+          <textarea name="notes" rows="3" class="mt-1 input-field"></textarea>
+        </div>
+
+        <button class="btn btn-primary">Создать</button>
+      </form>
+    </div>
+  </div>
+{% endblock %}

@@ -1,0 +1,84 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body {
+    @apply antialiased;
+    /* ГКМ brand: основной — Century Gothic, дополнительный — Arial */
+    font-family: "Century Gothic", "CenturyGothic", "AppleGothic", "URW Gothic", Arial, "Helvetica Neue", sans-serif;
+    letter-spacing: 0.01em;
+  }
+  html.dark, html.dark body { background-color: #141414; color: #f5f5f5; }
+  html.light, html.light body { background-color: #f5f5f5; color: #141414; }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: "Century Gothic", "CenturyGothic", "URW Gothic", Arial, sans-serif;
+    font-weight: 700;
+  }
+  ::selection { background: #aa141e; color: #fff; }
+}
+
+/* ===== Light theme overrides ===== */
+html.light {
+  --tw-bg-opacity: 1;
+}
+html.light .bg-dark-950 { background-color: #ffffff !important; }
+html.light .bg-dark-900 { background-color: #ffffff !important; }
+html.light .bg-dark-800 { background-color: #f3f4f6 !important; }
+html.light .bg-dark-700 { background-color: #e5e7eb !important; }
+html.light .bg-dark-600 { background-color: #d1d5db !important; }
+html.light, html.light body { color: #000000 !important; }
+html.light .text-white { color: #000000 !important; }
+html.light .text-dark-100 { color: #000000 !important; }
+html.light .text-dark-200 { color: #000000 !important; }
+html.light .text-dark-300 { color: #111111 !important; }
+html.light .text-dark-400 { color: #222222 !important; }
+html.light .text-dark-500 { color: #333333 !important; }
+html.light .text-dark-600 { color: #444444 !important; }
+html.light .text-primary-400 { color: #aa141e !important; }
+html.light .text-primary-500 { color: #aa141e !important; }
+html.light .text-primary-600 { color: #aa141e !important; }
+html.light .text-primary-700 { color: #8a0f17 !important; }
+html.light .border-dark-700 { border-color: #e5e7eb !important; }
+html.light .border-dark-600 { border-color: #d1d5db !important; }
+html.light .border-dark-800 { border-color: #d1d5db !important; }
+html.light .placeholder-dark-400::placeholder { color: #666666 !important; }
+html.light .chat-bubble-received { background-color: #d1d5db !important; color: #000000 !important; }
+html.light .chat-bubble-received p { color: #000000 !important; }
+html.light .chat-bubble-received span { color: #000000 !important; }
+html.light .chat-bubble-sent { background-color: #aa141e !important; color: #ffffff !important; }
+html.light .chat-bubble-sent p { color: #ffffff !important; }
+html.light .chat-bubble-sent span { color: #ffffff !important; }
+html.light .hover\:bg-dark-700:hover { background-color: #e5e7eb !important; }
+html.light .hover\:bg-dark-800:hover { background-color: #f3f4f6 !important; }
+html.light .bg-dark-900\/95 { background-color: rgba(255,255,255,0.95) !important; }
+html.light ::-webkit-scrollbar-thumb { background: #c0c0c0 !important; }
+html.light ::-webkit-scrollbar-thumb:hover { background: #aa141e !important; }
+
+/* Avatar colors for light theme */
+html.light .rounded-full[style*="background-color"] {
+  filter: brightness(2) !important;
+}
+
+@layer components {
+  .input-field {
+    @apply w-full px-4 py-2.5 bg-dark-800 border border-dark-600 rounded-xl text-sm text-white placeholder-dark-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all;
+  }
+  .btn-primary {
+    @apply px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-xl transition-all duration-200 text-sm;
+  }
+  .btn-secondary {
+    @apply px-4 py-2.5 bg-dark-700 hover:bg-dark-600 text-white font-medium rounded-xl transition-all duration-200 text-sm;
+  }
+  .chat-bubble-sent {
+    @apply bg-primary-600 text-white px-3.5 py-2 rounded-2xl rounded-br-sm;
+  }
+  .chat-bubble-received {
+    @apply bg-dark-800 text-white px-3.5 py-2 rounded-2xl rounded-bl-sm;
+  }
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #475569; }

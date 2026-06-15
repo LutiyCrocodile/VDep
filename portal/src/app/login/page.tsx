@@ -4,15 +4,6 @@ import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Building2, LogIn, Eye, EyeOff, Shield } from 'lucide-react'
 
-declare global {
-  interface Window {
-    ENV?: {
-      NEXT_PUBLIC_VIDEO_URL?: string;
-      NEXT_PUBLIC_AUTH_URL?: string;
-    };
-  }
-}
-
 const getAuthUrl = () => {
   if (typeof window !== 'undefined') {
     return window.ENV?.NEXT_PUBLIC_AUTH_URL || 'http://localhost:8000';

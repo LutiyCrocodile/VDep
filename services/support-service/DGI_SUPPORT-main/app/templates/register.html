@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block content %}
+  <div class="mx-auto max-w-md card-glow card-panel p-6">
+    <h1 class="text-2xl font-semibold">Регистрация</h1>
+    {% if error %}
+      <div class="mt-3 rounded-xl bg-red-500/10 p-3 text-sm text-red-200 ring-1 ring-red-500/30">{{ error }}</div>
+    {% endif %}
+    <form class="mt-4 grid gap-3" method="post" action="/register">
+      <div>
+        <label class="text-sm text-muted">Логин</label>
+        <p class="text-[11px] text-muted-2">Формат: ФамилияИнициалы (например: EvteevAS)</p>
+        <input name="username" placeholder="EvteevAS" class="mt-1 input-field" />
+      </div>
+      <div>
+        <label class="text-sm text-muted">Пароль</label>
+        <p class="text-[11px] text-muted-2">Минимум 8 символов, 1 заглавная буква, 1 цифра, 1 спецсимвол</p>
+        <input type="password" name="password" class="mt-1 input-field" />
+      </div>
+      <div>
+        <label class="text-sm text-muted">ФИО</label>
+        <input name="full_name" placeholder="Иванов Иван Иванович" class="mt-1 input-field" />
+      </div>
+      <div>
+        <label class="text-sm text-muted">Должность</label>
+        <input name="position" placeholder="Начальник отдела" class="mt-1 input-field" />
+      </div>
+      <div>
+        <label class="text-sm text-muted">Внутренний номер</label>
+        <input name="internal_number" placeholder="21-666" class="mt-1 input-field" />
+      </div>
+      <div>
+        <label class="text-sm text-muted">Кабинет</label>
+        <input name="office" placeholder="18.26" class="mt-1 input-field" />
+      </div>
+      <button class="btn btn-primary mt-2">Зарегистрироваться</button>
+      <a class="text-sm text-muted hover:underline" href="/login">Уже есть аккаунт? Войти</a>
+    </form>
+  </div>
+{% endblock %}

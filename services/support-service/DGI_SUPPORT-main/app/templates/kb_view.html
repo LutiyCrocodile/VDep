@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% block content %}
+  <div class="mb-4">
+    <a href="/kb" class="text-sm text-muted hover:underline">← База знаний</a>
+  </div>
+
+  <div class="card-glow card-panel p-8">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <div class="flex items-center gap-2 text-xs text-muted-2">
+          <span class="rounded-full bg-accent/10 px-2 py-0.5 ring-1 ring-accent/30 text-accent">
+            {{ category_labels[article.category] }}
+          </span>
+          <span>{{ article.updated_at.strftime('%d.%m.%Y') if article.updated_at else '' }}</span>
+          {% if not article.is_published %}
+            <span class="rounded-full bg-amber-500/10 px-2 py-0.5 ring-1 ring-amber-500/30 text-amber-300">Черновик</span>
+          {% endif %}
+        </div>
+        <h1 class="mt-2 text-2xl font-semibold">{{ article.title }}</h1>
+      </div>
+      {% if can_edit %}
+        <div class="flex gap-2">
+          <a href="/kb/{{ article.id }}/edit" class="btn btn-secondary px-3 py-1 text-xs">Редактировать</a>
+          <form method="post" action="/kb/{{ article.id }}/delete" onsubmit="return confirm('Удалить статью?')">
+            <button class="btn btn-danger px-3 py-1 text-xs">Удалить</button>
+          </form>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="mt-4 text-sm text-muted whitespace-pre-wrap leading-relaxed">{{ article.body }}</div>
+
+    {% if article.files %}
+      <div class="mt-6 border-t pt-4" style="border-color:var(--border)">
+        <h3 class="text-sm font-semibold text-muted">Прикреплённые файлы</h3>
+        <div class="mt-2 flex flex-wrap gap-2">
+          {% for f in article.files %}
+            <div class="flex items-center gap-2">
+              <a href="/kb/files/{{ f.id }}/download"
+                 class="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm ring-1 ring-border hover:ring-accent/40">
+                📎 {{ f.original_name }}
+                <span class="text-muted-2 text-xs">({{ (f.file_size // 1024) if f.file_size > 1024 else f.file_size }}{{ ' КБ' if f.file_size > 1024 else ' Б' }})</span>
+              </a>
+              {% if can_edit %}
+                <form method="post" action="/kb/files/{{ f.id }}/delete" onsubmit="return confirm('Удалить файл?')">
+                  <button class="text-xs text-muted-2 hover:text-red-400">✕</button>
+                </form>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+
+    {% if can_edit %}
+      <div class="mt-4 border-t pt-4" style="border-color:var(--border)">
+        <form method="post" action="/kb/upload" enctype="multipart/form-data" class="flex items-center gap-2">
+          <input type="hidden" name="article_id" value="{{ article.id }}" />
+          <input type="file" name="file" required class="text-sm text-muted file:mr-2 file:rounded-lg file:bg-accent/20 file:px-3 file:py-1 file:text-xs file:text-accent file:ring-1 file:ring-accent/30 file:cursor-pointer" />
+          <button class="btn btn-secondary px-3 py-1 text-xs">Прикрепить файл</button>
+        </form>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}

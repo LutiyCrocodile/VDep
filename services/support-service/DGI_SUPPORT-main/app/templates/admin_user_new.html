@@ -1,0 +1,131 @@
+{% extends 'base.html' %}
+{% block content %}
+  <div class="mb-4">
+    <a href="/admin/users" class="text-sm text-muted hover:underline">← Пользователи</a>
+  </div>
+
+  <div class="mx-auto max-w-2xl">
+    <div class="card-panel p-8">
+      <h1 class="text-2xl font-semibold">{% if u %}Редактирование пользователя{% else %}Новый пользователь{% endif %}</h1>
+
+      {% if new_user_error == 'empty' %}
+        <div class="mt-3 rounded-xl bg-rose-500/10 p-3 text-sm text-rose-200 ring-1 ring-rose-500/30">Заполните логин и пароль.</div>
+      {% elif new_user_error == 'exists' %}
+        <div class="mt-3 rounded-xl bg-amber-500/10 p-3 text-sm text-amber-200 ring-1 ring-amber-500/30">Пользователь с таким логином уже существует.</div>
+      {% elif new_user_error == 'username_format' %}
+        <div class="mt-3 rounded-xl bg-rose-500/10 p-3 text-sm text-rose-200 ring-1 ring-rose-500/30">Логин должен быть в формате ФамилияИнициалы (например: EvteevAS).</div>
+      {% elif new_user_error == 'password_weak' %}
+        <div class="mt-3 rounded-xl bg-rose-500/10 p-3 text-sm text-rose-200 ring-1 ring-rose-500/30">Пароль: минимум 8 символов, 1 заглавная буква, 1 цифра, 1 спецсимвол.</div>
+      {% elif new_user_error == 'password_too_short' %}
+        <div class="mt-3 rounded-xl bg-rose-500/10 p-3 text-sm text-rose-200 ring-1 ring-rose-500/30">Пароль должен быть минимум 8 символов.</div>
+      {% elif new_user_error == 'email_exists' %}
+        <div class="mt-3 rounded-xl bg-amber-500/10 p-3 text-sm text-amber-200 ring-1 ring-amber-500/30">Пользователь с таким email уже существует.</div>
+      {% elif new_user_error == 'create_failed' %}
+        <div class="mt-3 rounded-xl bg-rose-500/10 p-3 text-sm text-rose-200 ring-1 ring-rose-500/30">Ошибка при создании пользователя. Проверьте данные и попробуйте снова.</div>
+      {% elif new_user_error %}
+        <div class="mt-3 rounded-xl bg-rose-500/10 p-3 text-sm text-rose-200 ring-1 ring-rose-500/30">Ошибка: {{ new_user_error }}</div>
+      {% endif %}
+
+      <form class="mt-4 grid gap-4" method="post" action="{% if u %}/admin/users/{{ u.id }}/update{% else %}/admin/users/create{% endif %}">
+        {% if not u %}
+        <div>
+          <label class="text-sm text-muted">Логин *</label>
+          <p class="text-[11px] text-muted-2">Формат: ФамилияИнициалы</p>
+          <input name="username" placeholder="EvteevAS" required class="mt-1 input-field" />
+        </div>
+
+        <div>
+          <label class="text-sm text-muted">Email *</label>
+          <input name="email" type="email" placeholder="user@dgi.mos.ru" required class="mt-1 input-field" />
+        </div>
+
+        <div>
+          <label class="text-sm text-muted">Пароль *</label>
+          <p class="text-[11px] text-muted-2">Мин. 8 символов, 1 заглавная, 1 цифра, 1 спецсимвол</p>
+          <input name="password" type="password" required class="mt-1 input-field" />
+        </div>
+        {% else %}
+        <div>
+          <label class="text-sm text-muted">Логин</label>
+          <input name="username" value="{{ u.username }}" class="mt-1 input-field" />
+        </div>
+
+        <div>
+          <label class="text-sm text-muted">Email</label>
+          <input name="email" value="{{ user_email or u.email or '' }}" type="email" class="mt-1 input-field" />
+        </div>
+
+        <div>
+          <label class="text-sm text-muted">Новый пароль</label>
+          <p class="text-[11px] text-muted-2">Оставьте пустым, чтобы не менять</p>
+          <input name="password" type="password" class="mt-1 input-field" />
+        </div>
+        {% endif %}
+
+        <div>
+          <label class="text-sm text-muted">Статус</label>
+          <select name="is_active" class="mt-1 input-field">
+            <option value="1" {% if u and u.is_active %}selected{% endif %}>Активен</option>
+            <option value="0" {% if u and not u.is_active %}selected{% endif %}>Неактивен</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="text-sm text-muted">ФИО</label>
+          <input name="full_name" value="{{ u.full_name or '' if u else '' }}" placeholder="Иванов Иван Иванович" class="mt-1 input-field" />
+        </div>
+
+        <div>
+          <label class="text-sm text-muted">Должность</label>
+          <select name="position_id" class="mt-1 input-field">
+            <option value="">Не указана</option>
+            {% for pos in positions %}
+              <option value="{{ pos.id }}" {% if u and u.position_id == pos.id %}selected{% endif %}>{{ pos.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label class="text-sm text-muted">Внутренний номер</label>
+            <input name="internal_number" value="{{ u.internal_number or '' if u else '' }}" placeholder="21-666" class="mt-1 input-field" />
+          </div>
+          <div>
+            <label class="text-sm text-muted">Кабинет</label>
+            <input name="office" value="{{ u.office or '' if u else '' }}" placeholder="18.26" class="mt-1 input-field" />
+          </div>
+        </div>
+
+        {% if not u %}
+        <div>
+          <label class="text-sm text-muted">Статус</label>
+          <select name="is_active" class="mt-1 input-field">
+            <option value="1" selected>Активен</option>
+            <option value="0">Неактивен</option>
+          </select>
+        </div>
+        {% endif %}
+
+        <div class="mt-4 rounded-xl bg-slate-950/50 p-4 ring-1 ring-slate-800">
+          <h3 class="text-sm font-semibold text-slate-300">Роли в сервисах</h3>
+          <p class="text-[11px] text-muted-2">Выберите роль для каждого сервиса. Изменения применятся во всех сервисах.</p>
+          <div class="mt-3 grid gap-3">
+            {% for service in services %}
+            <div>
+              <label class="text-xs text-muted">{{ service.name }}</label>
+              <select name="service_role_{{ service.slug }}" class="mt-1 w-full rounded-lg bg-slate-950/60 px-2 py-1.5 text-sm ring-1 ring-slate-800">
+                <option value="" {% if not service.current_role %}selected{% endif %}>Нет доступа</option>
+                {% for role in service.roles %}
+                  <option value="{{ role.name }}" {% if service.current_role and service.current_role == role.name %}selected{% endif %}>{{ role.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <button class="btn btn-primary">{% if u %}Сохранить изменения{% else %}Создать пользователя{% endif %}</button>
+      </form>
+    </div>
+  </div>
+{% endblock %}

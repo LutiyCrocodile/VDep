@@ -1,0 +1,137 @@
+{% extends 'base.html' %}
+{% block content %}
+  <div class="grid gap-4 lg:grid-cols-3">
+    <div class="lg:col-span-2">
+      <div class="card-glow rounded-2xl theme-card p-6 ring-1 ring-slate-800">
+        <div class="flex items-center gap-4">
+          <div class="h-16 w-16 overflow-hidden rounded-2xl ring-1 ring-slate-800 bg-slate-950/50">
+            {% if u.avatar_path %}
+              <img src="{{ u.avatar_path }}" alt="avatar" class="h-16 w-16 object-cover" />
+            {% else %}
+              {% set base = (u.full_name or u.username) %}
+              {% set parts = base.split() %}
+              {% set initials = (parts[0][0] if parts|length > 0 else '') ~ (parts[1][0] if parts|length > 1 else '') %}
+              <div class="flex h-16 w-16 items-center justify-center text-xl font-semibold" style="color: var(--fg); background: rgba(var(--accent-rgb, 56 189 248), 0.10);">
+                {{ initials|upper }}
+              </div>
+            {% endif %}
+          </div>
+          <div>
+            <h1 class="text-2xl font-semibold">{{ u.username }}</h1>
+            <div class="mt-1 text-sm text-slate-400">{{ u.full_name or '—' }}</div>
+          </div>
+        </div>
+        <div class="mt-3 grid gap-1 text-sm text-slate-300">
+          <div><span class="text-slate-400">ФИО:</span> {{ u.full_name or '—' }}</div>
+          <div><span class="text-slate-400">Роль:</span> {{ u.role.value or '—' }}</div>
+          <div><span class="text-slate-400">Должность:</span> {{ u.position or '—' }}</div>
+          <div><span class="text-slate-400">Кабинет:</span> {{ u.office or '—' }}</div>
+          <div><span class="text-slate-400">Внутр. номер:</span> {{ u.internal_number or '—' }}</div>
+        </div>
+      </div>
+
+      <div class="mt-4 rounded-2xl theme-card p-6 ring-1 ring-slate-800">
+        <h2 class="text-lg font-semibold">Заявки пользователя</h2>
+        <div class="mt-3 grid gap-3">
+          {% for t in tickets %}
+            {% if user.role.value in ['engineer','admin'] %}
+              <a class="rounded-xl bg-slate-950/50 p-4 ring-1 ring-slate-800 hover:ring-slate-700" href="/tickets/{{ t.id }}">
+                <div class="text-sm text-slate-400">#{{ t.id }}</div>
+                <div class="font-medium">{{ t.title }}</div>
+              </a>
+            {% else %}
+              <div class="rounded-xl bg-slate-950/50 p-4 ring-1 ring-slate-800">
+                <div class="text-sm text-slate-400">#{{ t.id }}</div>
+                <div class="font-medium">{{ t.title }}</div>
+              </div>
+            {% endif %}
+          {% else %}
+            <div class="text-sm text-slate-400">Заявок пока нет.</div>
+          {% endfor %}
+        </div>
+      </div>
+
+      {% if user.role.value == 'admin' %}
+        <div class="mt-4 rounded-2xl theme-card p-6 ring-1 ring-slate-800">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-semibold">Редактирование (админ)</h2>
+            <a href="/admin/users/{{ u.id }}/edit" class="text-sm text-slate-300 hover:text-white">Открыть форму редактирования →</a>
+          </div>
+          <form class="mt-3 grid gap-3" method="post" action="/admin/users/{{ u.id }}/update">
+            <div class="grid gap-2 sm:grid-cols-3">
+              <div>
+                <label class="text-sm text-slate-300">Роль</label>
+                <select name="role" class="mt-1 w-full rounded-xl bg-slate-950/60 px-3 py-2 ring-1 ring-slate-800">
+                  {% for r in UserRole %}
+                    <option value="{{ r.value }}" {% if r.value == u.role.value %}selected{% endif %}>{{ r.value }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div>
+                <label class="text-sm text-slate-300">Активен</label>
+                <select name="is_active" class="mt-1 w-full rounded-xl bg-slate-950/60 px-3 py-2 ring-1 ring-slate-800">
+                  <option value="1" {% if u.is_active %}selected{% endif %}>Да</option>
+                  <option value="0" {% if not u.is_active %}selected{% endif %}>Нет</option>
+                </select>
+              </div>
+              <div>
+                <label class="text-sm text-slate-300">Новый пароль</label>
+                <input name="password" placeholder="(не менять)" class="mt-1 w-full rounded-xl bg-slate-950/60 px-3 py-2 ring-1 ring-slate-800" />
+              </div>
+            </div>
+            <div class="grid gap-2 sm:grid-cols-2">
+              <div>
+                <label class="text-sm text-slate-300">ФИО</label>
+                <input name="full_name" value="{{ u.full_name or '' }}" class="mt-1 w-full rounded-xl bg-slate-950/60 px-3 py-2 ring-1 ring-slate-800" />
+              </div>
+              <div>
+                <label class="text-sm text-slate-300">Должность</label>
+                <input name="position" value="{{ u.position or '' }}" class="mt-1 w-full rounded-xl bg-slate-950/60 px-3 py-2 ring-1 ring-slate-800" />
+              </div>
+              <div>
+                <label class="text-sm text-slate-300">Внутренний номер</label>
+                <input name="internal_number" value="{{ u.internal_number or '' }}" placeholder="21-666" class="mt-1 w-full rounded-xl bg-slate-950/60 px-3 py-2 ring-1 ring-slate-800" />
+              </div>
+              <div>
+                <label class="text-sm text-slate-300">Кабинет</label>
+                <input name="office" value="{{ u.office or '' }}" placeholder="18.26" class="mt-1 w-full rounded-xl bg-slate-950/60 px-3 py-2 ring-1 ring-slate-800" />
+              </div>
+            </div>
+            <button class="btn btn-secondary justify-self-start">Сохранить</button>
+          </form>
+        </div>
+      {% endif %}
+    </div>
+
+    <aside class="grid gap-4">
+      <div class="rounded-2xl theme-card p-6 ring-1 ring-slate-800">
+        <h2 class="text-lg font-semibold">Оборудование закреплённое</h2>
+        <div class="mt-3 grid gap-3">
+          {% for it in equipment %}
+            {% if user.role.value in ['engineer','admin'] %}
+              <a href="/equipment/{{ it.id }}" class="block rounded-xl bg-slate-950/50 p-4 ring-1 ring-slate-800 hover:ring-slate-700">
+                <div class="text-sm text-slate-400">{{ it.inventory_number }}</div>
+                <div class="font-medium">{{ it.name }}</div>
+                <div class="mt-1 text-sm text-slate-300"><span class="text-slate-400">Место:</span> {{ it.location or '—' }}</div>
+              </a>
+            {% else %}
+              <div class="block rounded-xl bg-slate-950/50 p-4 ring-1 ring-slate-800">
+                <div class="text-sm text-slate-400">{{ it.inventory_number }}</div>
+                <div class="font-medium">{{ it.name }}</div>
+                <div class="mt-1 text-sm text-slate-300"><span class="text-slate-400">Место:</span> {{ it.location or '—' }}</div>
+              </div>
+            {% endif %}
+          {% else %}
+            <div class="text-sm text-slate-400">Ничего не закреплено.</div>
+          {% endfor %}
+        </div>
+      </div>
+
+      {% if user.role.value in ['engineer','admin'] %}
+        <div class="rounded-2xl theme-card p-6 ring-1 ring-slate-800">
+          <a class="text-sm text-slate-300 hover:text-white" href="/users">← Назад к пользователям</a>
+        </div>
+      {% endif %}
+    </aside>
+  </div>
+{% endblock %}

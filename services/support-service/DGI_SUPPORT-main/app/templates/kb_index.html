@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% block content %}
+  <div class="flex items-center justify-between">
+    <h1 class="text-2xl font-semibold">База знаний</h1>
+    {% if can_edit %}
+      <a href="/kb/new" class="btn btn-primary">+ Новая статья</a>
+    {% endif %}
+  </div>
+
+  {# Category filter #}
+  <div class="mt-4 flex flex-wrap gap-2">
+    <a href="/kb"
+       class="rounded-xl px-3 py-1.5 text-sm ring-1 {% if not category %}bg-accent/20 ring-accent/40 text-accent{% else %}ring-border text-muted hover:underline{% endif %}">
+      Все
+    </a>
+    {% for cat in KbCategory %}
+      <a href="/kb?category={{ cat.value }}"
+         class="rounded-xl px-3 py-1.5 text-sm ring-1 {% if category == cat.value %}bg-accent/20 ring-accent/40 text-accent{% else %}ring-border text-muted hover:underline{% endif %}">
+        {{ category_labels[cat] }}
+      </a>
+    {% endfor %}
+  </div>
+
+  {# Articles #}
+  <div class="mt-6 grid gap-4">
+    {% for article in articles %}
+      <div class="card-glow card-panel p-5">
+        <div class="flex items-start justify-between gap-3">
+          <div class="flex-1">
+            <div class="flex items-center gap-2 text-xs text-muted-2">
+              <span class="rounded-full bg-accent/10 px-2 py-0.5 ring-1 ring-accent/30 text-accent">
+                {{ category_labels[article.category] }}
+              </span>
+              <span>{{ article.updated_at.strftime('%d.%m.%Y') if article.updated_at else '' }}</span>
+              {% if not article.is_published %}
+                <span class="rounded-full bg-amber-500/10 px-2 py-0.5 ring-1 ring-amber-500/30 text-amber-300">Черновик</span>
+              {% endif %}
+            </div>
+            <a href="/kb/{{ article.id }}" class="mt-2 block text-lg font-semibold hover:underline">{{ article.title }}</a>
+            {% if article.body %}
+              <p class="mt-2 text-sm text-muted line-clamp-3">{{ article.body[:300] }}</p>
+            {% endif %}
+            {% if article.files %}
+              <div class="mt-2 flex flex-wrap gap-2">
+                {% for f in article.files %}
+                  <a href="/kb/files/{{ f.id }}/download"
+                     class="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs ring-1 ring-border hover:ring-accent/40">
+                    📎 {{ f.original_name }}
+                    <span class="text-muted-2">({{ (f.file_size // 1024) if f.file_size > 1024 else f.file_size }}{{ ' КБ' if f.file_size > 1024 else ' Б' }})</span>
+                  </a>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+          {% if can_edit %}
+            <div class="flex gap-1">
+              <a href="/kb/{{ article.id }}/edit" class="btn btn-secondary px-2 py-1 text-xs">✏️</a>
+              <form method="post" action="/kb/{{ article.id }}/delete" onsubmit="return confirm('Удалить статью?')">
+                <button class="btn btn-danger px-2 py-1 text-xs">🗑</button>
+              </form>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
+
+    {% if not articles %}
+      <div class="card-panel p-10 text-center">
+        <p class="text-muted text-lg">Статей пока нет</p>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}

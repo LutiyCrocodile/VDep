@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+mysql-data/
+*.egg-info/
+dist/
+build/
+.git/
+.gitignore
+README.md
+render.yaml
+deploy/
+seed_users.py
+run.ps1

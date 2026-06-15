@@ -409,6 +409,89 @@ services:
       - video_network
     restart: unless-stopped
 
+  # Messenger backend
+  messenger-service:
+    build:
+      context: ../../services/messenger-service
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-video_hosting}
+      AUTH_SERVICE_URL: http://auth-service:8000
+      INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-internal-secret-token}
+      PORTAL_URL: ${PORTAL_URL:-http://localhost:3002}
+      CORS_ORIGINS: http://localhost:3005,http://localhost:3002,http://127.0.0.1:3005
+      UPLOAD_DIR: /app/uploads
+      DB_SCHEMA: messenger
+      DB_REQUIRE_TLS: "false"
+      REDIS_URL: redis://redis:6379/1
+    ports:
+      - "8005:8005"
+    volumes:
+      - messenger_uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - video_network
+    restart: unless-stopped
+
+  # Messenger frontend (Vite)
+  messenger-frontend:
+    build:
+      context: ../../services/messenger-service
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3005:3005"
+    environment:
+      VITE_API_PROXY: http://messenger-service:8005
+      VITE_PORTAL_URL: ${PORTAL_URL:-http://localhost:3002}
+    depends_on:
+      messenger-service:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    networks:
+      - video_network
+    restart: unless-stopped
+
+  # Support service
+  support-service:
+    build:
+      context: ../../services/support-service/DGI_SUPPORT-main
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-video_hosting}
+      SECRET_KEY: ${SECRET_KEY:-change-me}
+      APP_NAME: Support Service
+      AUTH_SERVICE_URL: http://auth-service:8000
+      INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-internal-secret-token}
+      PORTAL_URL: ${PORTAL_URL:-http://localhost:3002}
+      DB_SCHEMA: support
+    ports:
+      - "3004:3004"
+    depends_on:
+      db:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3004/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - video_network
+    restart: unless-stopped
+
   # Portal frontend (unified entry point)
   portal:
     build:
@@ -422,18 +505,23 @@ services:
       - NODE_ENV=production
       - NEXT_PUBLIC_VIDEO_URL=http://localhost:3000
       - NEXT_PUBLIC_AUTH_URL=http://localhost:8000
+      - NEXT_PUBLIC_MESSENGER_URL=http://localhost:3005
+      - NEXT_PUBLIC_SUPPORT_URL=http://localhost:3004
     depends_on:
       - auth-service
+      - messenger-frontend
+      - support-service
     networks:
       - video_network
     restart: unless-stopped
 
-  # Reverse proxy and load balancer
+  # Reverse proxy (опционально: docker compose --profile proxy up -d)
+  # В dev SSL не используется (см. nginx.conf); 443 не пробрасываем — на Windows часто занят IIS/VPN.
   nginx:
+    profiles: ["proxy"]
     image: nginx:alpine
     ports:
-      - "80:80"
-      - "443:443"  # For SSL when configured
+      - "${NGINX_HTTP_PORT:-8080}:80"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./ssl:/etc/nginx/ssl:ro  # For SSL certificates
@@ -521,6 +609,7 @@ volumes:
   prometheus_data:
   grafana_data:
   recordings_data:
+  messenger_uploads:
 
 networks:
   video_network:

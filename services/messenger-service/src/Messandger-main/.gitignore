@@ -1,0 +1,44 @@
+# Dependencies
+frontend/node_modules/
+backend/venv/
+backend/.venv/
+**/__pycache__/
+
+# Environment
+.env
+.env.local
+backend/.env
+
+# Uploads & DB
+backend/uploads/
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+*.py[cod]
+*.egg-info/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Temp
+*.tmp
+~$*
+
+# Documents (out of repo scope)
+# *.docx
+# *.doc
+*.pdf
+*.pptx
+*.xlsx
+
+# Logs
+*.log
+
+# Draw.io diagrams
+assets/figures/drawio/*.drawio

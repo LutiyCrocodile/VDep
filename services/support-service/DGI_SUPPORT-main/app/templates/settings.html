@@ -1,0 +1,109 @@
+{% extends 'base.html' %}
+{% block content %}
+  <div class="flex items-center justify-between">
+    <h1 class="text-2xl font-semibold">Настройки интерфейса</h1>
+    <a href="/app" class="btn btn-secondary">Назад</a>
+  </div>
+
+  <div class="mt-4 grid gap-4 lg:grid-cols-2">
+    <div class="card-panel p-6">
+      <h2 class="text-lg font-semibold">Оформление</h2>
+      <div class="mt-3 grid gap-4">
+
+        <div>
+          <label class="text-sm text-muted">Тема</label>
+          <div class="mt-2 swatch-row" role="radiogroup" aria-label="Тема">
+            <button type="button" class="swatch" data-preset="dark" aria-label="Тёмная" style="--swatch-bg: rgb(2 6 23);"></button>
+            <button type="button" class="swatch" data-preset="light" aria-label="Светлая" style="--swatch-bg: rgb(248 250 252);"></button>
+          </div>
+          <select id="uiPreset" class="hidden" aria-hidden="true" tabindex="-1">
+            <option value="dark">Тёмная</option>
+            <option value="light">Светлая</option>
+          </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-sm text-muted">Плотность</label>
+            <select id="uiDensity" class="mt-1 input-field">
+              <option value="compact">Компактно</option>
+              <option value="cozy">Комфортно</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-sm text-muted">Размер текста</label>
+            <select id="uiFont" class="mt-1 input-field">
+              <option value="sm">Мелкий</option>
+              <option value="md">Средний</option>
+              <option value="lg">Крупный</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="text-sm text-muted">Анимации</label>
+          <select id="uiMotion" class="mt-1 input-field">
+            <option value="normal">Обычно</option>
+            <option value="reduce">Минимум</option>
+          </select>
+        </div>
+
+        <button id="uiReset" type="button" class="btn btn-secondary justify-self-start">Сбросить настройки</button>
+      </div>
+    </div>
+
+    <div class="card-panel p-6">
+      <h2 class="text-lg font-semibold">Предпросмотр</h2>
+      <div class="mt-3 grid gap-3">
+        <div class="card-panel p-4">
+          <div class="flex items-center justify-between">
+            <div class="text-sm font-semibold">Навигация</div>
+            <div class="flex items-center gap-2">
+              <button class="btn btn-secondary btn-icon" type="button">⋮</button>
+              <button class="btn btn-primary" type="button">Новая заявка</button>
+            </div>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-2 text-sm">
+            <a href="#" class="text-muted hover:underline">Заявки</a>
+            <a href="#" class="text-muted hover:underline">Оборудование</a>
+            <a href="#" class="text-muted hover:underline">База знаний</a>
+          </div>
+        </div>
+
+        <div class="card-glow card-panel p-5">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <div class="text-sm text-muted">Пример карточки</div>
+              <div class="text-lg font-semibold">Заявка: не работает принтер</div>
+              <div class="mt-1 text-sm text-muted">Автор: Иванов М.П.</div>
+            </div>
+            <div class="text-right">
+              <div class="text-xs text-muted-2">Статус</div>
+              <div class="mt-1 inline-flex rounded-lg px-2.5 py-1 text-sm" style="background:var(--chip);border:1px solid var(--border)">В работе</div>
+            </div>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <div class="inline-flex rounded-lg px-2.5 py-1 text-sm prio-low" style="background:var(--chip);border:1px solid var(--border)">Низкий</div>
+            <div class="inline-flex rounded-lg px-2.5 py-1 text-sm prio-high" style="background:var(--chip);border:1px solid var(--border)">Высокий</div>
+            <div class="inline-flex rounded-lg px-2.5 py-1 text-sm prio-urgent" style="background:var(--chip);border:1px solid var(--border)">Срочно</div>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap gap-2">
+          <button class="btn btn-primary" type="button">Основная</button>
+          <button class="btn btn-secondary" type="button">Вторичная</button>
+          <button class="btn btn-danger" type="button">Опасная</button>
+        </div>
+
+        <div class="grid gap-2">
+          <input class="input-field" placeholder="Поле ввода" />
+          <select class="input-field">
+            <option>Вариант A</option>
+            <option>Вариант B</option>
+          </select>
+          <textarea rows="3" class="input-field" placeholder="Комментарий..."></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

@@ -3,15 +3,6 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
-// Extend Window interface for runtime env
-declare global {
-  interface Window {
-    ENV?: {
-      NEXT_PUBLIC_VIDEO_URL?: string;
-      NEXT_PUBLIC_AUTH_URL?: string;
-    };
-  }
-}
 import { 
   Video, 
   MessageSquare, 
@@ -41,18 +32,50 @@ interface Service {
 }
 
 // Get service URLs from env (works with next.config.js env config)
+const normalizeToCurrentHost = (url: string) => {
+  if (typeof window === 'undefined') return url
+  try {
+    const u = new URL(url)
+    const cur = window.location
+    // keep explicit port from env, but force same protocol/hostname as portal
+    u.protocol = cur.protocol
+    u.hostname = cur.hostname
+    return u.toString().replace(/\/$/, '')
+  } catch {
+    return url
+  }
+}
+
 const getVideoUrl = () => {
   if (typeof window !== 'undefined') {
-    return window.ENV?.NEXT_PUBLIC_VIDEO_URL || 'http://localhost:3000';
+    const raw = window.ENV?.NEXT_PUBLIC_VIDEO_URL || 'http://localhost:3000'
+    return normalizeToCurrentHost(raw)
   }
   return 'http://localhost:3000';
 };
 
 const getAuthUrl = () => {
   if (typeof window !== 'undefined') {
-    return window.ENV?.NEXT_PUBLIC_AUTH_URL || 'http://localhost:8000';
+    const raw = window.ENV?.NEXT_PUBLIC_AUTH_URL || 'http://localhost:8000'
+    return normalizeToCurrentHost(raw)
   }
   return 'http://localhost:8000';
+};
+
+const getMessengerUrl = () => {
+  if (typeof window !== 'undefined') {
+    const raw = window.ENV?.NEXT_PUBLIC_MESSENGER_URL || 'http://localhost:3005'
+    return normalizeToCurrentHost(raw)
+  }
+  return process.env.NEXT_PUBLIC_MESSENGER_URL || 'http://localhost:3005';
+};
+
+const getSupportUrl = () => {
+  if (typeof window !== 'undefined') {
+    const raw = window.ENV?.NEXT_PUBLIC_SUPPORT_URL || 'http://localhost:3004'
+    return normalizeToCurrentHost(raw)
+  }
+  return process.env.NEXT_PUBLIC_SUPPORT_URL || 'http://localhost:3004';
 };
 
 // Available services configuration
@@ -73,10 +96,10 @@ const getServices = (): Service[] => [
       name: 'Мессенджер',
       description: 'Защищённый корпоративный мессенджер для сотрудников ДГИ',
       icon: <MessageSquare className="w-8 h-8" />,
-      url: 'http://localhost:3001',
+      url: getMessengerUrl(),
       color: 'text-emerald-600',
       bgColor: 'bg-emerald-50',
-      status: 'coming-soon',
+      status: 'active',
       features: ['Чаты', 'Группы', 'Звонки', 'Файлы']
     },
     {
@@ -95,10 +118,10 @@ const getServices = (): Service[] => [
       name: 'Техподдержка',
       description: 'Система подачи заявок в техническую поддержку',
       icon: <Headphones className="w-8 h-8" />,
-      url: 'http://localhost:3004',
+      url: getSupportUrl(),
       color: 'text-orange-600',
       bgColor: 'bg-orange-50',
-      status: 'coming-soon',
+      status: 'active',
       features: ['Заявки', 'Чат', 'База знаний', 'Отслеживание']
     }
 ];
@@ -236,6 +259,14 @@ export default function PortalPage() {
   }
 
   const handleLogout = () => {
+    const token = localStorage.getItem('access_token')
+    if (token) {
+      // Revoke token in auth-service to force logout in other services (messenger, video, etc.)
+      fetch(`${getAuthUrl()}/logout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {})
+    }
     localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
     setUser(null)
