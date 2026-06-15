@@ -1,0 +1,134 @@
+# =============================================================================
+# Production overrides for DGI Portal
+# =============================================================================
+# Использование:
+#   1. В .env задайте: DOMAIN=ваш.сервер.ip.или.домен
+#   2. docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Что делает этот файл:
+#   - Убирает dev volume-монтирования исходников
+#   - Собирает frontend в production-режиме с реальными URL
+#   - Закрывает от хоста порты БД / кэша / очередей
+#   - Запускает nginx без profile (всегда включён, порт 80)
+#   - Убирает profile prometheus/grafana (они всегда запускаются)
+# =============================================================================
+
+services:
+
+  # ── Инфраструктура: закрываем порты от хоста ─────────────────────────────
+  db:
+    ports: []
+
+  redis:
+    ports: []
+
+  rabbitmq:
+    ports: []
+
+  elasticsearch:
+    ports: []
+
+  # ── video-service: убираем dev-монтирование src ──────────────────────────
+  video-service:
+    volumes: []
+
+  # ── Frontend (Next.js production build) ──────────────────────────────────
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+      target: production
+      args:
+        NEXT_PUBLIC_API_URL: http://${DOMAIN:-localhost}:8000
+        NEXT_PUBLIC_VIDEO_API_URL: http://${DOMAIN:-localhost}:8001
+        NEXT_PUBLIC_STREAMING_API_URL: http://${DOMAIN:-localhost}:8002
+        NEXT_PUBLIC_NOTIFICATION_API_URL: http://${DOMAIN:-localhost}:8003
+        NEXT_PUBLIC_SEARCH_API_URL: http://${DOMAIN:-localhost}:8004
+        NEXT_PUBLIC_HLS_PUBLIC_BASE: http://${DOMAIN:-localhost}:8888
+        NEXT_PUBLIC_RTMP_HOST: ${DOMAIN:-localhost}
+        NEXT_PUBLIC_PORTAL_URL: http://${DOMAIN:-localhost}:3002
+    volumes: []
+    command: npm start
+    environment:
+      - NODE_ENV=production
+
+  # ── Portal (Next.js, уже production в базовом compose — обновляем URL) ───
+  portal:
+    build:
+      args:
+        AUTH_INTERNAL_URL: http://auth-service:8000
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_VIDEO_URL=http://${DOMAIN:-localhost}:3000
+      - NEXT_PUBLIC_AUTH_URL=http://${DOMAIN:-localhost}:8000
+      - NEXT_PUBLIC_MESSENGER_URL=http://${DOMAIN:-localhost}:3005
+      - NEXT_PUBLIC_SUPPORT_URL=http://${DOMAIN:-localhost}:3004
+      - NEXT_PUBLIC_DASHBOARD_URL=http://${DOMAIN:-localhost}:5173
+
+  # ── Dashboard frontend (nginx + static Vite build) ────────────────────────
+  dashboard-frontend:
+    build:
+      context: ../../services/dashboard-service
+      dockerfile: Dockerfile.frontend
+      target: production
+      args:
+        VITE_AUTH_URL: http://${DOMAIN:-localhost}:8000
+        VITE_PORTAL_URL: http://${DOMAIN:-localhost}:3002
+    environment: []
+
+  # ── Messenger: обновляем CORS под prod-домен ──────────────────────────────
+  messenger-service:
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-video_hosting}
+      AUTH_SERVICE_URL: http://auth-service:8000
+      INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-internal-secret-token}
+      PORTAL_URL: http://${DOMAIN:-localhost}:3002
+      CORS_ORIGINS: http://${DOMAIN:-localhost}:3005,http://${DOMAIN:-localhost}:3002
+      UPLOAD_DIR: /app/uploads
+      DB_SCHEMA: messenger
+      DB_REQUIRE_TLS: "false"
+      REDIS_URL: redis://redis:6379/1
+
+  # ── Support: обновляем PORTAL_URL ────────────────────────────────────────
+  support-service:
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-video_hosting}
+      SECRET_KEY: ${SECRET_KEY:-change-me}
+      APP_NAME: Support Service
+      AUTH_SERVICE_URL: http://auth-service:8000
+      INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-internal-secret-token}
+      PORTAL_URL: http://${DOMAIN:-localhost}:3002
+      DB_SCHEMA: support
+
+  # ── Dashboard backend: prod-настройки ────────────────────────────────────
+  dashboard-service:
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-video_hosting}
+      SECRET_KEY: ${SECRET_KEY:-django-secret-key-change-in-production}
+      DEBUG: ${DASHBOARD_DEBUG:-False}
+      ALLOWED_HOSTS: ${DASHBOARD_ALLOWED_HOSTS:-*}
+      AUTH_SERVICE_URL: http://auth-service:8000
+      INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-internal-secret-token}
+      CORS_ALLOWED_ORIGINS: http://${DOMAIN:-localhost}:5173,http://${DOMAIN:-localhost}:3002
+
+  # ── MinIO: обновляем CORS под prod-домен ─────────────────────────────────
+  minio-init:
+    environment:
+      MC_ACCESS: ${MINIO_ROOT_USER:-minioadmin}
+      MC_SECRET: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    entrypoint: >
+      sh -c "
+        sleep 5 &&
+        mc alias set local http://minio:9000 $$MC_ACCESS $$MC_SECRET &&
+        mc mb -p local/videos &&
+        mc anonymous set download local/videos &&
+        printf '%s\n' '{\"CORSRules\":[{\"AllowedOrigins\":[\"http://${DOMAIN:-localhost}:3000\",\"http://${DOMAIN:-localhost}:3002\",\"http://${DOMAIN:-localhost}:5173\"],\"AllowedMethods\":[\"GET\",\"HEAD\",\"PUT\",\"POST\"],\"AllowedHeaders\":[\"*\"],\"ExposeHeaders\":[\"Content-Length\",\"ETag\"],\"MaxAgeSeconds\":3000}]}' > /tmp/cors.json &&
+        mc cors set local/videos /tmp/cors.json || true &&
+        echo 'MinIO bucket configured for production'
+      "
+
+  # ── Nginx: убираем profile, порт 80 ──────────────────────────────────────
+  nginx:
+    profiles: []
+    ports:
+      - "80:80"

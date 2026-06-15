@@ -64,6 +64,7 @@ class UserResponse(BaseModel):
     is_active: bool
     is_employee: bool = True
     full_name: Optional[str] = None
+    services: Optional[dict] = None
 
 
 class InternalUserCreate(BaseModel):
@@ -276,11 +277,13 @@ def _cors_allow_origins() -> list:
         "http://localhost:3002",
         "http://localhost:3003",
         "http://localhost:3004",
+        "http://localhost:5173",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3001",
         "http://127.0.0.1:3002",
         "http://127.0.0.1:3003",
         "http://127.0.0.1:3004",
+        "http://127.0.0.1:5173",
     ]
 
 
@@ -599,7 +602,11 @@ async def search_users(
     }
 
 @app.get("/users/me", response_model=UserResponse)
-async def read_users_me(current_user: User = Depends(get_current_active_user)):
+async def read_users_me(
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    services = await current_user.get_service_permissions(db)
     return UserResponse(
         id=str(current_user.id),
         username=current_user.username,
@@ -607,7 +614,8 @@ async def read_users_me(current_user: User = Depends(get_current_active_user)):
         role=current_user.role.name if current_user.role else "user",
         is_active=current_user.is_active,
         is_employee=getattr(current_user, 'is_employee', True) or True,
-        full_name=getattr(current_user, 'full_name', None)
+        full_name=getattr(current_user, 'full_name', None),
+        services=services
     )
 
 @app.get("/users/me/services")

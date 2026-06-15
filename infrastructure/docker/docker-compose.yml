@@ -380,6 +380,7 @@ services:
     build:
       context: ../../frontend
       dockerfile: Dockerfile
+      target: development
     ports:
       - "3000:3000"
     volumes:
@@ -492,6 +493,55 @@ services:
       - video_network
     restart: unless-stopped
 
+  # Dashboard service (Django)
+  dashboard-service:
+    build:
+      context: ../../services/dashboard-service
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-video_hosting}
+      SECRET_KEY: ${SECRET_KEY:-django-secret-key-change-in-production}
+      DEBUG: ${DASHBOARD_DEBUG:-True}
+      ALLOWED_HOSTS: ${DASHBOARD_ALLOWED_HOSTS:-*}
+      AUTH_SERVICE_URL: http://auth-service:8000
+      INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-internal-secret-token}
+      CORS_ALLOWED_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3002,http://localhost:5173}
+    ports:
+      - "3003:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    # healthcheck disabled temporarily - /api/ returns 404
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:8000/api/"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    networks:
+      - video_network
+    restart: unless-stopped
+
+  # Dashboard frontend (Vite)
+  dashboard-frontend:
+    build:
+      context: ../../services/dashboard-service
+      dockerfile: Dockerfile.frontend
+      target: development
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_PROXY: http://dashboard-service:8000
+      VITE_AUTH_URL: http://localhost:8000
+      VITE_PORTAL_URL: http://localhost:3002
+    depends_on:
+      - dashboard-service
+      - auth-service
+    networks:
+      - video_network
+    restart: unless-stopped
+
   # Portal frontend (unified entry point)
   portal:
     build:
@@ -507,6 +557,7 @@ services:
       - NEXT_PUBLIC_AUTH_URL=http://localhost:8000
       - NEXT_PUBLIC_MESSENGER_URL=http://localhost:3005
       - NEXT_PUBLIC_SUPPORT_URL=http://localhost:3004
+      - NEXT_PUBLIC_DASHBOARD_URL=http://localhost:5173
     depends_on:
       - auth-service
       - messenger-frontend

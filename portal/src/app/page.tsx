@@ -78,6 +78,14 @@ const getSupportUrl = () => {
   return process.env.NEXT_PUBLIC_SUPPORT_URL || 'http://localhost:3004';
 };
 
+const getDashboardUrl = () => {
+  if (typeof window !== 'undefined') {
+    const raw = window.ENV?.NEXT_PUBLIC_DASHBOARD_URL || 'http://localhost:5173'
+    return normalizeToCurrentHost(raw)
+  }
+  return process.env.NEXT_PUBLIC_DASHBOARD_URL || 'http://localhost:5173';
+};
+
 // Available services configuration
 const getServices = (): Service[] => [
   {
@@ -107,10 +115,10 @@ const getServices = (): Service[] => [
       name: 'Дашборд',
       description: 'Аналитическая панель с показателями и статистикой работы',
       icon: <BarChart3 className="w-8 h-8" />,
-      url: 'http://localhost:3003',
+      url: getDashboardUrl(),
       color: 'text-purple-600',
       bgColor: 'bg-purple-50',
-      status: 'coming-soon',
+      status: 'active',
       features: ['Отчёты', 'Графики', 'Метрики', 'Экспорт']
     },
     {

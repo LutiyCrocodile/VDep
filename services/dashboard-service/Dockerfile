@@ -1,4 +1,3 @@
-# Dashboard Service Dockerfile
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -6,26 +5,20 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     gcc \
     curl \
+    libpq-dev \
+    fonts-dejavu \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies directly
-RUN pip install --no-cache-dir \
-    fastapi==0.115.0 \
-    uvicorn[standard]==0.32.0 \
-    sqlalchemy==2.0.36 \
-    asyncpg==0.29.0 \
-    pydantic==2.9.2 \
-    pydantic-settings==2.6.0 \
-    httpx==0.27.2 \
-    bcrypt==4.2.0 \
-    python-jose[cryptography]==3.3.0 \
-    ldap3==2.9.1 \
-    requests==2.32.3 \
-    psutil==5.9.8 \
-    prometheus-client==0.21.0
+# Install Python dependencies
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY src/ ./src/
+# Copy backend
+COPY backend/ ./backend/
 
-EXPOSE 3003
+# Set working directory to backend for Django
+WORKDIR /app/backend
 
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "3003"]
+EXPOSE 8000
+
+CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "4"]

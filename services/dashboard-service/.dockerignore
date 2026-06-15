@@ -1,0 +1,38 @@
+# Frontend node_modules
+frontend/node_modules
+frontend/dist
+frontend/.vite
+frontend/.next
+
+# Backend Python cache
+backend/__pycache__
+backend/*/__pycache__
+backend/*.pyc
+backend/*.pyo
+backend/*.pyd
+backend/.pytest_cache
+backend/.mypy_cache
+backend/db.sqlite3
+backend/db.sqlite3-journal
+backend/staticfiles
+backend/media
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile
+Dockerfile.frontend
+.dockerignore

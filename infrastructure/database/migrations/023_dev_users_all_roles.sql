@@ -19,7 +19,9 @@ INSERT INTO services (id, slug, name, description, is_active)
 SELECT gen_random_uuid(), v.slug, v.name, v.description, true
 FROM (VALUES
   ('video', 'Видеохостинг ДГИ', 'Система видеохостинга'),
-  ('messenger', 'Мессенджер ДГИ', 'Корпоративный мессенджер')
+  ('messenger', 'Мессенджер ДГИ', 'Корпоративный мессенджер'),
+  ('dashboard', 'Дашборд ДГИ', 'Аналитический дашборд'),
+  ('support', 'Техподдержка ДГИ', 'Система техподдержки')
 ) AS v(slug, name, description)
 WHERE NOT EXISTS (SELECT 1 FROM services s WHERE s.slug = v.slug);
 
@@ -151,6 +153,123 @@ SELECT sr.id, sp.id
 FROM service_roles sr
 JOIN services s ON s.id = sr.service_id AND s.slug = 'messenger'
 JOIN service_permissions sp ON sp.service_id = s.id AND sp.name = 'messenger:send'
+WHERE sr.name = 'user'
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- 7b) Ensure service permissions exist (dashboard)
+INSERT INTO service_permissions (id, service_id, name, description)
+SELECT gen_random_uuid(), s.id, v.name, v.description
+FROM services s
+CROSS JOIN (VALUES
+  ('dashboard:view', 'Can view dashboard'),
+  ('dashboard:edit', 'Can edit dashboard'),
+  ('dashboard:admin', 'Full dashboard administration')
+) AS v(name, description)
+WHERE s.slug = 'dashboard'
+  AND NOT EXISTS (
+    SELECT 1 FROM service_permissions sp
+    WHERE sp.service_id = s.id AND sp.name = v.name
+  );
+
+-- 7c) Ensure service roles exist (dashboard)
+INSERT INTO service_roles (id, service_id, name, description, is_active)
+SELECT gen_random_uuid(), s.id, r.name, r.description, true
+FROM services s
+CROSS JOIN (VALUES
+  ('admin', 'Dashboard administrator'),
+  ('viewer', 'Can view dashboard data'),
+  ('editor', 'Can edit dashboard configurations')
+) AS r(name, description)
+WHERE s.slug = 'dashboard'
+  AND NOT EXISTS (
+    SELECT 1 FROM service_roles sr
+    WHERE sr.service_id = s.id AND sr.name = r.name
+  );
+
+-- 7d) Ensure service role-permissions mapping exists (dashboard)
+-- admin -> all perms
+INSERT INTO service_role_permissions (role_id, permission_id)
+SELECT sr.id, sp.id
+FROM service_roles sr
+JOIN services s ON s.id = sr.service_id AND s.slug = 'dashboard'
+JOIN service_permissions sp ON sp.service_id = s.id
+WHERE sr.name = 'admin'
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- editor -> view, edit
+INSERT INTO service_role_permissions (role_id, permission_id)
+SELECT sr.id, sp.id
+FROM service_roles sr
+JOIN services s ON s.id = sr.service_id AND s.slug = 'dashboard'
+JOIN service_permissions sp ON sp.service_id = s.id AND sp.name IN ('dashboard:view', 'dashboard:edit')
+WHERE sr.name = 'editor'
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- viewer -> view
+INSERT INTO service_role_permissions (role_id, permission_id)
+SELECT sr.id, sp.id
+FROM service_roles sr
+JOIN services s ON s.id = sr.service_id AND s.slug = 'dashboard'
+JOIN service_permissions sp ON sp.service_id = s.id AND sp.name = 'dashboard:view'
+WHERE sr.name = 'viewer'
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- 7e) Ensure service permissions exist (support)
+INSERT INTO service_permissions (id, service_id, name, description)
+SELECT gen_random_uuid(), s.id, v.name, v.description
+FROM services s
+CROSS JOIN (VALUES
+  ('support:create_ticket', 'Can create support tickets'),
+  ('support:respond', 'Can respond to tickets'),
+  ('support:close', 'Can close tickets'),
+  ('support:admin', 'Full support administration')
+) AS v(name, description)
+WHERE s.slug = 'support'
+  AND NOT EXISTS (
+    SELECT 1 FROM service_permissions sp
+    WHERE sp.service_id = s.id AND sp.name = v.name
+  );
+
+-- 7f) Ensure service roles exist (support)
+INSERT INTO service_roles (id, service_id, name, description, is_active)
+SELECT gen_random_uuid(), s.id, r.name, r.description, true
+FROM services s
+CROSS JOIN (VALUES
+  ('admin', 'Support administrator'),
+  ('agent', 'Support agent'),
+  ('user', 'Can submit support tickets')
+) AS r(name, description)
+WHERE s.slug = 'support'
+  AND NOT EXISTS (
+    SELECT 1 FROM service_roles sr
+    WHERE sr.service_id = s.id AND sr.name = r.name
+  );
+
+-- 7g) Ensure service role-permissions mapping exists (support)
+-- admin -> all perms
+INSERT INTO service_role_permissions (role_id, permission_id)
+SELECT sr.id, sp.id
+FROM service_roles sr
+JOIN services s ON s.id = sr.service_id AND s.slug = 'support'
+JOIN service_permissions sp ON sp.service_id = s.id
+WHERE sr.name = 'admin'
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- agent -> create, respond, close
+INSERT INTO service_role_permissions (role_id, permission_id)
+SELECT sr.id, sp.id
+FROM service_roles sr
+JOIN services s ON s.id = sr.service_id AND s.slug = 'support'
+JOIN service_permissions sp ON sp.service_id = s.id AND sp.name IN ('support:create_ticket', 'support:respond', 'support:close')
+WHERE sr.name = 'agent'
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- user -> create
+INSERT INTO service_role_permissions (role_id, permission_id)
+SELECT sr.id, sp.id
+FROM service_roles sr
+JOIN services s ON s.id = sr.service_id AND s.slug = 'support'
+JOIN service_permissions sp ON sp.service_id = s.id AND sp.name = 'support:create_ticket'
 WHERE sr.name = 'user'
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 

@@ -1,0 +1,258 @@
+from rest_framework import viewsets, permissions, status
+from rest_framework.decorators import action, parser_classes
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.response import Response
+from django.http import FileResponse
+from django.utils import timezone
+import os
+import tempfile
+
+from .models import ReportStatus, ReportTemplate, Report, SharedReport, Comment, ExcelImportQueue
+from .serializers import (
+    ReportStatusSerializer,
+    ReportTemplateSerializer,
+    ReportSerializer,
+    SharedReportSerializer,
+    CommentSerializer,
+    ExcelImportQueueSerializer,
+)
+from .services import PPTXGenerator
+from .excel_service import ExcelImporter
+
+
+# ===========================
+# СТАТУСЫ ОТЧЁТОВ
+# ===========================
+class ReportStatusViewSet(viewsets.ModelViewSet):
+    queryset = ReportStatus.objects.all()
+    serializer_class = ReportStatusSerializer
+    permission_classes = [permissions.AllowAny]
+
+
+# ===========================
+# ШАБЛОНЫ ОТЧЁТОВ
+# ===========================
+class ReportTemplateViewSet(viewsets.ModelViewSet):
+    queryset = ReportTemplate.objects.all()
+    serializer_class = ReportTemplateSerializer
+    permission_classes = [permissions.AllowAny]
+
+    @action(detail=False, methods=['get'])
+    def public(self, request):
+        public_templates = self.get_queryset().filter(is_public=True)
+        serializer = self.get_serializer(public_templates, many=True)
+        return Response(serializer.data)
+
+
+# ===========================
+# ОТЧЁТЫ
+# ===========================
+class ReportViewSet(viewsets.ModelViewSet):
+    queryset = Report.objects.all()
+    serializer_class = ReportSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def get_queryset(self):
+        queryset = Report.objects.all()
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(title__icontains=search)
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status__name=status_filter)
+        return queryset
+
+    @action(detail=True, methods=['post'])
+    def generate_pptx(self, request, pk=None):
+        report = self.get_object()
+
+        if not report.template:
+            return Response(
+                {'error': 'У отчёта нет привязанного шаблона'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            generator = PPTXGenerator(report.template.config)
+            pptx_path = generator.generate()
+
+            report.file_path = pptx_path
+            report.save()
+
+            response = FileResponse(
+                open(pptx_path, 'rb'),
+                content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation'
+            )
+            response['Content-Disposition'] = f'attachment; filename="report_{report.id}.pptx"'
+            return response
+
+        except Exception as e:
+            return Response(
+                {'error': f'Ошибка генерации PPTX: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['post'])
+    def change_status(self, request, pk=None):
+        report = self.get_object()
+        status_id = request.data.get('status_id')
+
+        if not status_id:
+            return Response({'error': 'Укажите status_id'}, status=400)
+
+        try:
+            new_status = ReportStatus.objects.get(id=status_id)
+            report.status = new_status
+            report.save()
+            return Response({'success': True, 'status': new_status.name})
+        except ReportStatus.DoesNotExist:
+            return Response({'error': 'Статус не найден'}, status=404)
+
+    @action(detail=True, methods=['post'])
+    def generate_pdf(self, request, pk=None):
+        """Генерирует PDF-файл из отчёта"""
+        report = self.get_object()
+
+        if not report.template:
+            return Response(
+                {'error': 'У отчёта нет привязанного шаблона'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            from .pdf_service import PDFGenerator
+            generator = PDFGenerator(report)
+            pdf_path = generator.generate()
+
+            report.file_path = pdf_path
+            report.save()
+
+            response = FileResponse(
+                open(pdf_path, 'rb'),
+                content_type='application/pdf'
+            )
+            response['Content-Disposition'] = f'attachment; filename="report_{report.id}.pdf"'
+            return response
+
+        except Exception as e:
+            return Response(
+                {'error': f'Ошибка генерации PDF: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+# ===========================
+# ОБЩИЕ ДОСТУПЫ
+# ===========================
+class SharedReportViewSet(viewsets.ModelViewSet):
+    queryset = SharedReport.objects.all()
+    serializer_class = SharedReportSerializer
+    permission_classes = [permissions.AllowAny]
+
+
+# ===========================
+# КОММЕНТАРИИ
+# ===========================
+class CommentViewSet(viewsets.ModelViewSet):
+    queryset = Comment.objects.all()
+    serializer_class = CommentSerializer
+    permission_classes = [permissions.AllowAny]
+
+
+# ===========================
+# ИМПОРТ EXCEL
+# ===========================
+class ExcelImportViewSet(viewsets.ModelViewSet):
+    queryset = ExcelImportQueue.objects.all()
+    serializer_class = ExcelImportQueueSerializer
+    permission_classes = [permissions.AllowAny]
+
+    @action(detail=False, methods=['post'], parser_classes=[MultiPartParser, FormParser])
+    def upload(self, request):
+        file = request.FILES.get('file')
+        import_type = request.data.get('import_type', 'metrics')
+
+        if not file:
+            return Response({'error': 'Файл не предоставлен'}, status=400)
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
+            for chunk in file.chunks():
+                tmp.write(chunk)
+            tmp_path = tmp.name
+
+        queue_item = ExcelImportQueue.objects.create(
+            filename=file.name,
+            user=request.user if request.user.is_authenticated else None,
+            status='processing'
+        )
+
+        try:
+            rows = ExcelImporter.parse_file(tmp_path)
+
+            if import_type == 'metrics':
+                imported, errors = ExcelImporter.import_metrics_data(rows)
+            elif import_type == 'properties':
+                imported, errors = ExcelImporter.import_properties(rows)
+            else:
+                imported, errors = 0, ['Неизвестный тип импорта']
+
+            queue_item.status = 'completed' if not errors else 'completed_with_errors'
+            queue_item.raw_data = {'imported': imported, 'total_rows': len(rows), 'errors': errors}
+            queue_item.processed_at = timezone.now()
+            queue_item.save()
+
+            return Response({
+                'success': True,
+                'imported': imported,
+                'total_rows': len(rows),
+                'errors': errors,
+                'status': queue_item.status,
+            })
+
+        except Exception as e:
+            queue_item.status = 'error'
+            queue_item.error_message = str(e)
+            queue_item.save()
+
+            return Response({'success': False, 'error': str(e)}, status=500)
+
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+    @action(detail=False, methods=['get'])
+    def history(self, request):
+        history = ExcelImportQueue.objects.all().order_by('-created_at')[:20]
+        serializer = self.get_serializer(history, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'], parser_classes=[MultiPartParser, FormParser])
+    def hr_status(self, request):
+        """Загружает Excel с HR-статусами и возвращает сводку"""
+        file = request.FILES.get('file')
+
+        if not file:
+            return Response({'error': 'Файл не предоставлен'}, status=400)
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
+            for chunk in file.chunks():
+                tmp.write(chunk)
+            tmp_path = tmp.name
+
+        try:
+            rows = ExcelImporter.parse_file(tmp_path)
+            data, summary, errors = ExcelImporter.import_hr_status(rows)
+
+            return Response({
+                'success': True,
+                'total_employees': len(data),
+                'summary': summary,
+                'errors': errors,
+            })
+        except Exception as e:
+            return Response({'success': False, 'error': str(e)}, status=500)
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+
