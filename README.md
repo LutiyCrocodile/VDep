@@ -110,35 +110,6 @@ services · service_roles · user_service_roles
 - Docker 24+ и Docker Compose v2
 - 4 GB RAM свободно
 
-### Запуск
-
-```bash
-cd infrastructure/docker
-
-# 1. Настроить окружение
-cp .env.example .env
-# отредактировать .env (пароли, SECRET_KEY и т.д.)
-
-# 2. Поднять все сервисы
-docker compose up -d
-
-# 3. Открыть
-# Портал:   http://localhost:3002
-# Frontend: http://localhost:3000
-# Grafana:  http://localhost:3001  (admin/admin)
-# MinIO:    http://localhost:9001  (minioadmin/minioadmin)
-```
-
-### Тестовые пользователи (пароль: `admin123`)
-
-| Логин | Роль |
-|---|---|
-| `admin` | Полный доступ ко всем сервисам |
-| `video_admin` | Администратор видеохостинга |
-| `employee` | Стандартный сотрудник |
-| `external` | Не-сотрудник (без доступа к порталу) |
-
----
 
 ## 🏗️ Структура проекта
 
@@ -176,28 +147,6 @@ video.dgi.mos.ru/
 
 ---
 
-## 📡 Production-деплой
-
-```bash
-cd infrastructure/docker
-
-# SSL-сертификаты в ./ssl/
-# Настроить nginx.prod.conf + публичные URLs в .env
-
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-```
-
-**Ключевые переменные для прода:**
-
-```env
-SECRET_KEY=<openssl rand -hex 32>
-POSTGRES_PASSWORD=<strong_password>
-PUBLIC_HLS_BASE=https://your-domain.ru:8888
-PUBLIC_RTMP_HOST=your-domain.ru
-CORS_ORIGINS=https://your-domain.ru
-```
-
----
 
 ## 📊 Мониторинг
 
