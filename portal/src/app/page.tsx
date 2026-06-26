@@ -37,9 +37,12 @@ const normalizeToCurrentHost = (url: string) => {
   try {
     const u = new URL(url)
     const cur = window.location
-    // keep explicit port from env, but force same protocol/hostname as portal
-    u.protocol = cur.protocol
     u.hostname = cur.hostname
+    // Only copy browser protocol when port is default (80/443/empty)
+    // For non-standard ports keep http:// so browser navigation works
+    if (!u.port || u.port === '80' || u.port === '443') {
+      u.protocol = cur.protocol
+    }
     return u.toString().replace(/\/$/, '')
   } catch {
     return url
@@ -185,8 +188,7 @@ export default function PortalPage() {
     }
 
     try {
-      const authUrl = getAuthUrl()
-      const res = await fetch(`${authUrl}/users/me`, {
+      const res = await fetch(`/api/auth/users/me`, {
         headers: { Authorization: `Bearer ${token}` },
       })
 
@@ -223,12 +225,11 @@ export default function PortalPage() {
     setLoginLoading(true)
 
     try {
-      const authUrl = getAuthUrl()
       const formData = new URLSearchParams()
       formData.append('username', loginData.username)
       formData.append('password', loginData.password)
 
-      const res = await fetch(`${authUrl}/token`, {
+      const res = await fetch(`/api/auth/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: formData.toString(),
@@ -244,7 +245,7 @@ export default function PortalPage() {
       localStorage.setItem('refresh_token', data.refresh_token)
 
       // Fetch user info
-      const meRes = await fetch(`${authUrl}/users/me`, {
+      const meRes = await fetch(`/api/auth/users/me`, {
         headers: { Authorization: `Bearer ${data.access_token}` },
       })
       if (meRes.ok) {
@@ -270,7 +271,7 @@ export default function PortalPage() {
     const token = localStorage.getItem('access_token')
     if (token) {
       // Revoke token in auth-service to force logout in other services (messenger, video, etc.)
-      fetch(`${getAuthUrl()}/logout`, {
+      fetch(`/api/auth/logout`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       }).catch(() => {})

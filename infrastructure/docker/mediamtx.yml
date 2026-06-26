@@ -10,22 +10,22 @@ authMethod: http
 authHTTPAddress: http://streaming-service:8002/internal/mediamtx/auth
 authHTTPExclude:
   - action: read
-    path:
+    path: ""
   - action: playback
-    path:
+    path: ""
   - action: api
-    path:
+    path: ""
   - action: metrics
-    path:
+    path: ""
   - action: pprof
-    path:
+    path: ""
 
 rtmp: yes
 rtmpAddress: :1935
 
 hls: yes
 hlsAddress: :8888
-hlsAllowOrigin: "*"
+hlsAllowOrigins: ["*"]
 
 pathDefaults:
   source: publisher

@@ -1,12 +1,15 @@
 # Multi-stage build (dev + prod)
+# Build context: repo root (../../ relative to docker-compose.yml)
+# This allows COPY of both frontend/ and shared/ directories
 FROM node:18-alpine AS base
 WORKDIR /app
-COPY package.json ./
+COPY frontend/package.json ./
 RUN npm install
 
 # ── Development ──────────────────────────────────────────────────────────────
 FROM base AS development
-COPY . .
+COPY frontend/ .
+COPY shared/ /shared
 CMD ["npm", "run", "dev", "--", "-H", "0.0.0.0"]
 
 # ── Production builder ────────────────────────────────────────────────────────
@@ -29,7 +32,8 @@ ENV NEXT_PUBLIC_HLS_PUBLIC_BASE=$NEXT_PUBLIC_HLS_PUBLIC_BASE
 ENV NEXT_PUBLIC_RTMP_HOST=$NEXT_PUBLIC_RTMP_HOST
 ENV NEXT_PUBLIC_PORTAL_URL=$NEXT_PUBLIC_PORTAL_URL
 ENV NEXT_TELEMETRY_DISABLED=1
-COPY . .
+COPY frontend/ .
+COPY shared/ /shared
 RUN npm run build
 
 # ── Production runner ─────────────────────────────────────────────────────────

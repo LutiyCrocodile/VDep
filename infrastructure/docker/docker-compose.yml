@@ -205,7 +205,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-video_hosting}
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
       INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-internal-secret-token}
-      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://portal-dgim.ru,https://portal-dgim.ru:3000,https://portal-dgim.ru:3004,https://portal-dgim.ru:3005,https://portal-dgim.ru:5173}
       # Пусто = только локальные пароли из БД (см. database/seed_data.sql). Для LDAP задайте реальный URL в .env.
       LDAP_SERVER: ${LDAP_SERVER:-}
       LDAP_BASE_DN: ${LDAP_BASE_DN:-DC=dgi,DC=mos,DC=ru}
@@ -239,8 +239,8 @@ services:
       MINIO_BUCKET: videos
       MINIO_SECURE: "false"
       # Хост:порт или полный URL MinIO для ссылок в JSON (браузер), не minio:9000
-      MINIO_EXTERNAL_ENDPOINT: ${MINIO_EXTERNAL_ENDPOINT:-localhost:9000}
-      PUBLIC_VIDEO_API_URL: ${PUBLIC_VIDEO_API_URL:-http://localhost:8001}
+      MINIO_EXTERNAL_ENDPOINT: ${MINIO_EXTERNAL_ENDPOINT:-portal-dgim.ru}
+      PUBLIC_VIDEO_API_URL: ${PUBLIC_VIDEO_API_URL:-https://portal-dgim.ru/api/video}
       PUBLIC_MEDIA_VIA_API: ${PUBLIC_MEDIA_VIA_API:-true}
       AUTH_SERVICE_URL: http://auth-service:8000
       INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-internal-secret-token}
@@ -317,7 +317,6 @@ services:
     image: bluenviron/mediamtx:latest
     ports:
       - "1935:1935"
-      - "8888:8888"
     volumes:
       - ./mediamtx.yml:/mediamtx.yml:ro
       - recordings_data:/recordings
@@ -336,16 +335,16 @@ services:
       INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-internal-secret-token}
       NOTIFICATION_SERVICE_URL: http://notification-service:8003
       VIDEO_SERVICE_URL: http://video-service:8001
-      PUBLIC_VIDEO_API_URL: ${PUBLIC_VIDEO_API_URL:-http://localhost:8001}
+      PUBLIC_VIDEO_API_URL: ${PUBLIC_VIDEO_API_URL:-https://portal-dgim.ru/api/video}
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       MINIO_BUCKET: videos
       MINIO_SECURE: "false"
-      FRONTEND_PUBLIC_URL: ${FRONTEND_PUBLIC_URL:-http://localhost:3000}
+      FRONTEND_PUBLIC_URL: ${FRONTEND_PUBLIC_URL:-https://portal-dgim.ru:3000}
       REDIS_URL: redis://redis:6379/0
-      PUBLIC_HLS_BASE: ${PUBLIC_HLS_BASE:-http://localhost:8888}
-      PUBLIC_RTMP_HOST: ${PUBLIC_RTMP_HOST:-localhost}
+      PUBLIC_HLS_BASE: ${PUBLIC_HLS_BASE:-https://portal-dgim.ru:8888}
+      PUBLIC_RTMP_HOST: ${PUBLIC_RTMP_HOST:-portal-dgim.ru}
       PUBLIC_RTMP_PORT: "1935"
       RECORDINGS_PATH: /recordings
       MEDIAMTX_API_URL: http://mediamtx:9997
@@ -378,11 +377,9 @@ services:
   # Video hosting frontend
   frontend:
     build:
-      context: ../../frontend
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: frontend/Dockerfile
       target: development
-    ports:
-      - "3000:3000"
     volumes:
       - ../../frontend:/app
       - ../../shared:/shared:ro
@@ -390,14 +387,14 @@ services:
       - frontend_next:/app/.next
     environment:
       - NODE_ENV=development
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
-      - NEXT_PUBLIC_VIDEO_API_URL=http://localhost:8001
-      - NEXT_PUBLIC_STREAMING_API_URL=http://localhost:8002
-      - NEXT_PUBLIC_NOTIFICATION_API_URL=http://localhost:8003
-      - NEXT_PUBLIC_SEARCH_API_URL=http://localhost:8004
-      - NEXT_PUBLIC_PORTAL_URL=http://localhost:3002
-      - NEXT_PUBLIC_HLS_PUBLIC_BASE=http://localhost:8888
-      - NEXT_PUBLIC_RTMP_HOST=localhost
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://portal-dgim.ru/api/auth}
+      - NEXT_PUBLIC_VIDEO_API_URL=${NEXT_PUBLIC_VIDEO_API_URL:-https://portal-dgim.ru/api/video}
+      - NEXT_PUBLIC_STREAMING_API_URL=${NEXT_PUBLIC_STREAMING_API_URL:-https://portal-dgim.ru/api/streaming}
+      - NEXT_PUBLIC_NOTIFICATION_API_URL=${NEXT_PUBLIC_NOTIFICATION_API_URL:-https://portal-dgim.ru/api/notifications}
+      - NEXT_PUBLIC_SEARCH_API_URL=${NEXT_PUBLIC_SEARCH_API_URL:-https://portal-dgim.ru/api/search}
+      - NEXT_PUBLIC_PORTAL_URL=${NEXT_PUBLIC_PORTAL_URL:-https://portal-dgim.ru}
+      - NEXT_PUBLIC_HLS_PUBLIC_BASE=${NEXT_PUBLIC_HLS_PUBLIC_BASE:-https://portal-dgim.ru:8888}
+      - NEXT_PUBLIC_RTMP_HOST=${NEXT_PUBLIC_RTMP_HOST:-portal-dgim.ru}
       - NEXT_PUBLIC_RTMP_PORT=1935
       - NEXT_PUBLIC_RTMP_APP=live
     command: npm run dev
@@ -420,7 +417,7 @@ services:
       AUTH_SERVICE_URL: http://auth-service:8000
       INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-internal-secret-token}
       PORTAL_URL: ${PORTAL_URL:-http://localhost:3002}
-      CORS_ORIGINS: http://localhost:3005,http://localhost:3002,http://127.0.0.1:3005
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://portal-dgim.ru,https://portal-dgim.ru:3000,https://portal-dgim.ru:3004,https://portal-dgim.ru:3005,https://portal-dgim.ru:5173}
       UPLOAD_DIR: /app/uploads
       DB_SCHEMA: messenger
       DB_REQUIRE_TLS: "false"
@@ -450,11 +447,9 @@ services:
     build:
       context: ../../services/messenger-service
       dockerfile: Dockerfile.frontend
-    ports:
-      - "3005:3005"
     environment:
       VITE_API_PROXY: http://messenger-service:8005
-      VITE_PORTAL_URL: ${PORTAL_URL:-http://localhost:3002}
+      VITE_PORTAL_URL: ${PORTAL_URL:-https://portal-dgim.ru}
     depends_on:
       messenger-service:
         condition: service_healthy
@@ -477,8 +472,6 @@ services:
       INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-internal-secret-token}
       PORTAL_URL: ${PORTAL_URL:-http://localhost:3002}
       DB_SCHEMA: support
-    ports:
-      - "3004:3004"
     depends_on:
       db:
         condition: service_healthy
@@ -505,7 +498,7 @@ services:
       ALLOWED_HOSTS: ${DASHBOARD_ALLOWED_HOSTS:-*}
       AUTH_SERVICE_URL: http://auth-service:8000
       INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-internal-secret-token}
-      CORS_ALLOWED_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3002,http://localhost:5173}
+      CORS_ALLOWED_ORIGINS: ${CORS_ORIGINS:-https://portal-dgim.ru,https://portal-dgim.ru:3000,https://portal-dgim.ru:3004,https://portal-dgim.ru:3005,https://portal-dgim.ru:5173}
     ports:
       - "3003:8000"
     depends_on:
@@ -529,12 +522,10 @@ services:
       context: ../../services/dashboard-service
       dockerfile: Dockerfile.frontend
       target: development
-    ports:
-      - "5173:5173"
     environment:
       VITE_API_PROXY: http://dashboard-service:8000
-      VITE_AUTH_URL: http://localhost:8000
-      VITE_PORTAL_URL: http://localhost:3002
+      VITE_AUTH_URL: ${VITE_AUTH_URL:-https://portal-dgim.ru/api/auth}
+      VITE_PORTAL_URL: ${PORTAL_URL:-https://portal-dgim.ru}
     depends_on:
       - dashboard-service
       - auth-service
@@ -549,15 +540,21 @@ services:
       dockerfile: portal/Dockerfile
       args:
         AUTH_INTERNAL_URL: ${AUTH_INTERNAL_URL:-http://auth-service:8000}
+        NEXT_PUBLIC_AUTH_URL: ${NEXT_PUBLIC_AUTH_URL:-https://portal-dgim.ru/api/auth}
+        NEXT_PUBLIC_VIDEO_URL: ${NEXT_PUBLIC_VIDEO_URL:-https://portal-dgim.ru:3000}
+        NEXT_PUBLIC_MESSENGER_URL: ${NEXT_PUBLIC_MESSENGER_URL:-https://portal-dgim.ru:3005}
+        NEXT_PUBLIC_SUPPORT_URL: ${NEXT_PUBLIC_SUPPORT_URL:-https://portal-dgim.ru:3004}
+        NEXT_PUBLIC_DASHBOARD_URL: ${NEXT_PUBLIC_DASHBOARD_URL:-https://portal-dgim.ru:5173}
     ports:
       - "3002:3001"
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_VIDEO_URL=http://localhost:3000
-      - NEXT_PUBLIC_AUTH_URL=http://localhost:8000
-      - NEXT_PUBLIC_MESSENGER_URL=http://localhost:3005
-      - NEXT_PUBLIC_SUPPORT_URL=http://localhost:3004
-      - NEXT_PUBLIC_DASHBOARD_URL=http://localhost:5173
+      - AUTH_INTERNAL_URL=${AUTH_INTERNAL_URL:-http://auth-service:8000}
+      - NEXT_PUBLIC_VIDEO_URL=${NEXT_PUBLIC_VIDEO_URL:-https://portal-dgim.ru:3000}
+      - NEXT_PUBLIC_AUTH_URL=${NEXT_PUBLIC_AUTH_URL:-https://portal-dgim.ru/api/auth}
+      - NEXT_PUBLIC_MESSENGER_URL=${NEXT_PUBLIC_MESSENGER_URL:-https://portal-dgim.ru:3005}
+      - NEXT_PUBLIC_SUPPORT_URL=${NEXT_PUBLIC_SUPPORT_URL:-https://portal-dgim.ru:3004}
+      - NEXT_PUBLIC_DASHBOARD_URL=${NEXT_PUBLIC_DASHBOARD_URL:-https://portal-dgim.ru:5173}
     depends_on:
       - auth-service
       - messenger-frontend
@@ -572,10 +569,17 @@ services:
     profiles: ["proxy"]
     image: nginx:alpine
     ports:
-      - "${NGINX_HTTP_PORT:-8080}:80"
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "443:443"
+      - "3000:3000"
+      - "3004:3004"
+      - "3005:3005"
+      - "5173:5173"
+      - "8888:8888"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./ssl:/etc/nginx/ssl:ro  # For SSL certificates
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
       - nginx_cache:/var/cache/nginx
       - minio_cache:/tmp/minio_cache
     depends_on:

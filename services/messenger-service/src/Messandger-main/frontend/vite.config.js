@@ -8,6 +8,7 @@ export default defineConfig({
   server: {
     port: 3005,
     host: true,
+    allowedHosts: true,
     proxy: {
       '/api': apiTarget,
       '/ws': { target: apiTarget.replace(/^http/, 'ws'), ws: true },

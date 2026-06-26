@@ -35,8 +35,8 @@ services:
   # ── Frontend (Next.js production build) ──────────────────────────────────
   frontend:
     build:
-      context: ../../frontend
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: frontend/Dockerfile
       target: production
       args:
         NEXT_PUBLIC_API_URL: http://${DOMAIN:-localhost}:8000

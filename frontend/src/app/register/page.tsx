@@ -1,10 +1,11 @@
 ﻿'use client';
 
 import { useEffect } from 'react';
+import { getPortalLoginUrl } from '@/lib/portal-url';
 
 export default function RegisterPage() {
   useEffect(() => {
-    window.location.href = 'http://localhost:3002/login';
+    window.location.href = getPortalLoginUrl();
   }, []);
 
   return (

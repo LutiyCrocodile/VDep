@@ -24,12 +24,11 @@ export default function LoginPage() {
     setLoginLoading(true)
 
     try {
-      const authUrl = getAuthUrl()
       const formData = new URLSearchParams()
       formData.append('username', loginData.username)
       formData.append('password', loginData.password)
 
-      const res = await fetch(`${authUrl}/token`, {
+      const res = await fetch(`/api/auth/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: formData.toString(),
@@ -44,7 +43,7 @@ export default function LoginPage() {
       localStorage.setItem('access_token', data.access_token)
       localStorage.setItem('refresh_token', data.refresh_token)
 
-      const meRes = await fetch(`${authUrl}/users/me`, {
+      const meRes = await fetch(`/api/auth/users/me`, {
         headers: { Authorization: `Bearer ${data.access_token}` },
       })
       if (meRes.ok) {
